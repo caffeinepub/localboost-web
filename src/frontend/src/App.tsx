@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Circle,
   Clock,
+  Cloud,
   Copy,
   Download,
   Dumbbell,
@@ -51,6 +52,7 @@ import {
   Search,
   Send,
   Settings,
+  Shield,
   ShoppingBag,
   Smartphone,
   Sparkles,
@@ -88,19 +90,240 @@ function goToMain() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   URGENCY BANNER
+═══════════════════════════════════════════════════════════ */
+function UrgencyBanner({
+  isHindi,
+  onDismiss,
+}: {
+  isHindi: boolean;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      data-ocid="urgency.panel"
+      role="banner"
+      className="sticky top-0 z-[60] bg-gradient-to-r from-primary via-indigo-600 to-primary/90 text-white py-2.5 px-4 shadow-md"
+    >
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span
+            aria-hidden="true"
+            className="hidden sm:flex w-6 h-6 rounded-full bg-white/20 items-center justify-center flex-shrink-0"
+          >
+            <Zap className="w-3.5 h-3.5 text-white" />
+          </span>
+          <p className="text-sm font-semibold truncate">
+            {isHindi
+              ? "इस हफ्ते सिर्फ 3 डेमो स्लॉट बचे हैं — अभी मुफ़्त बुक करें"
+              : "Only 3 demo slots left this week — Book yours free"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => scrollTo("demo-form")}
+            data-ocid="urgency.button"
+            className="text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap min-h-[32px] flex items-center gap-1"
+          >
+            {isHindi ? "→ डेमो पाएं" : "→ Get Demo"}
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            data-ocid="urgency.close_button"
+            aria-label="Dismiss banner"
+            className="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors flex-shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXIT-INTENT POPUP
+═══════════════════════════════════════════════════════════ */
+function ExitIntentPopup({ isHindi }: { isHindi: boolean }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    // Don't show if already shown this session
+    if (sessionStorage.getItem("lb_exit_shown") === "1") return;
+
+    let triggered = false;
+    function trigger() {
+      if (triggered) return;
+      triggered = true;
+      sessionStorage.setItem("lb_exit_shown", "1");
+      setVisible(true);
+    }
+
+    // Desktop: mouseleave from top of viewport
+    function handleMouseLeave(e: MouseEvent) {
+      if (e.clientY < 5) trigger();
+    }
+
+    // Mobile: detect scroll-up after scrolling down enough
+    let lastScrollY = window.scrollY;
+    let maxScrollDown = 0;
+    let accumulated = 0;
+    function handleScroll() {
+      const currentY = window.scrollY;
+      const delta = currentY - lastScrollY;
+      if (delta > 0) {
+        maxScrollDown = Math.max(maxScrollDown, currentY);
+        accumulated = 0;
+      } else {
+        if (maxScrollDown > 200) {
+          accumulated += Math.abs(delta);
+          if (accumulated > 80) trigger();
+        }
+      }
+      lastScrollY = currentY;
+    }
+
+    document.addEventListener("mouseleave", handleMouseLeave);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      document.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  function close() {
+    setVisible(false);
+  }
+
+  if (!visible) return null;
+
+  const waUrl =
+    "https://wa.me/918709546323?text=Hello%2C%20I%27d%20like%20a%20free%20demo%20website%20for%20my%20business.";
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        aria-hidden="true"
+      />
+
+      {/* Modal */}
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="exit-popup-title"
+        className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full p-7 md:p-9 flex flex-col gap-5 animate-in fade-in zoom-in-95 duration-200 border-0 m-0"
+      >
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={close}
+          data-ocid="exit_popup.close_button"
+          aria-label="Close popup"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-muted hover:bg-accent flex items-center justify-center transition-colors"
+        >
+          <X className="w-4 h-4 text-muted-foreground" />
+        </button>
+
+        {/* Icon */}
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+          <Rocket className="w-7 h-7 text-primary" />
+        </div>
+
+        {/* Copy */}
+        <div className="text-center">
+          <h2
+            id="exit-popup-title"
+            className="font-display font-bold text-2xl text-foreground mb-3 leading-tight"
+          >
+            {isHindi ? "रुकें — अभी मत जाएं!" : "Wait — Don't Leave Yet!"}
+          </h2>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {isHindi
+              ? "हम आपके बिज़नेस के लिए एक मुफ़्त प्रीव्यू वेबसाइट बनाएंगे — कोई भुगतान नहीं, कोई दबाव नहीं।"
+              : "We'll build a free preview website for your business — no payment, no obligation. See what your site could look like."}
+          </p>
+        </div>
+
+        {/* Trust badge */}
+        <div className="flex items-center justify-center gap-4 py-2 px-4 bg-accent/50 rounded-xl text-xs font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+            {isHindi ? "मुफ़्त डेमो" : "Free Demo"}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+            {isHindi ? "कोई भुगतान नहीं" : "No Payment"}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+            {isHindi ? "3–7 दिन" : "3–7 Days"}
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col gap-3">
+          <Button
+            size="lg"
+            onClick={() => {
+              scrollTo("demo-form");
+              close();
+            }}
+            data-ocid="exit_popup.primary_button"
+            className="h-13 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/25 transition-all hover:scale-105"
+          >
+            {isHindi ? "मुफ़्त डेमो पाएं" : "Get My Free Demo"}
+          </Button>
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-ocid="exit_popup.secondary_button"
+            className="h-12 rounded-full bg-green-600 hover:bg-green-500 text-white font-semibold flex items-center justify-center gap-2 transition-all hover:scale-105 text-sm"
+          >
+            <MessageCircle className="w-4 h-4" />
+            {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
+          </a>
+          <button
+            type="button"
+            onClick={close}
+            data-ocid="exit_popup.cancel_button"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 underline underline-offset-2"
+          >
+            {isHindi
+              ? "नहीं, मुझे ज़रूरत नहीं"
+              : "No thanks, I don't need more customers"}
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    NAV
 ═══════════════════════════════════════════════════════════ */
-function Nav() {
+function Nav({
+  isHindi,
+  setIsHindi,
+}: {
+  isHindi: boolean;
+  setIsHindi: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
   const [open, setOpen] = useState(false);
 
   const links = [
-    { label: "About", id: "about" },
-    { label: "Services", id: "services" },
-    { label: "Demos", id: "demos" },
-    { label: "AI Helper", id: "ai-helper" },
-    { label: "Pricing", id: "pricing" },
+    { label: isHindi ? "हमारे बारे में" : "About", id: "about" },
+    { label: isHindi ? "सेवाएं" : "Services", id: "services" },
+    { label: isHindi ? "डेमो" : "Demos", id: "demos" },
+    { label: isHindi ? "AI हेल्पर" : "AI Helper", id: "ai-helper" },
+    { label: isHindi ? "तुलना" : "Compare", id: "comparison" },
+    { label: isHindi ? "प्राइसिंग" : "Pricing", id: "pricing" },
     { label: "FAQ", id: "faq" },
-    { label: "Contact", id: "contact" },
+    { label: isHindi ? "संपर्क" : "Contact", id: "contact" },
   ];
 
   return (
@@ -143,13 +366,24 @@ function Nav() {
               {l.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setIsHindi((h) => !h)}
+            data-ocid="nav.toggle"
+            aria-pressed={isHindi}
+            aria-label="Toggle Hindi/English language"
+            className="flex items-center gap-1.5 text-sm font-semibold border border-primary/30 text-primary hover:bg-primary hover:text-white px-3 py-1.5 rounded-full transition-all"
+          >
+            <Languages className="w-3.5 h-3.5" />
+            {isHindi ? "EN" : "HI"}
+          </button>
           <Button
             size="sm"
             className="ml-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-5 font-semibold shadow-sm"
             onClick={() => scrollTo("demo-form")}
             data-ocid="nav.primary_button"
           >
-            Get Free Demo
+            {isHindi ? "मुफ़्त डेमो" : "Get Free Demo"}
           </Button>
         </nav>
 
@@ -194,15 +428,26 @@ function Nav() {
                 {l.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setIsHindi((h) => !h)}
+              data-ocid="nav.toggle"
+              aria-pressed={isHindi}
+              aria-label="Toggle Hindi/English language"
+              className="flex items-center gap-2 text-sm font-semibold border border-primary/30 text-primary hover:bg-primary hover:text-white px-4 py-3 rounded-xl transition-all min-h-[44px]"
+            >
+              <Languages className="w-4 h-4" />
+              {isHindi ? "Switch to English" : "हिंदी में देखें"}
+            </button>
             <Button
-              className="mt-3 mb-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full font-semibold h-12"
+              className="mt-1 mb-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full font-semibold h-12"
               onClick={() => {
                 scrollTo("demo-form");
                 setOpen(false);
               }}
               data-ocid="nav.primary_button"
             >
-              Get Free Demo Website
+              {isHindi ? "मुफ़्त डेमो वेबसाइट पाएं" : "Get Free Demo Website"}
             </Button>
           </nav>
         </div>
@@ -214,13 +459,20 @@ function Nav() {
 /* ═══════════════════════════════════════════════════════════
    HERO
 ═══════════════════════════════════════════════════════════ */
-function Hero() {
-  const trustBadges = [
-    { icon: CheckCircle, label: "Free Demo First" },
-    { icon: Zap, label: "3–7 Day Delivery" },
-    { icon: CheckCircle, label: "Mobile Ready" },
-    { icon: CheckCircle, label: "Starting ₹2,999" },
-  ];
+function Hero({ isHindi }: { isHindi: boolean }) {
+  const trustBadges = isHindi
+    ? [
+        { icon: CheckCircle, label: "पहले मुफ़्त डेमो" },
+        { icon: Zap, label: "3–7 दिन में डिलीवरी" },
+        { icon: CheckCircle, label: "मोबाइल रेडी" },
+        { icon: CheckCircle, label: "₹2,999 से शुरू" },
+      ]
+    : [
+        { icon: CheckCircle, label: "Free Demo First" },
+        { icon: Zap, label: "3–7 Day Delivery" },
+        { icon: CheckCircle, label: "Mobile Ready" },
+        { icon: CheckCircle, label: "Starting ₹2,999" },
+      ];
 
   return (
     <section
@@ -242,24 +494,48 @@ function Hero() {
           <div className="inline-flex items-center gap-2 mb-7">
             <Badge className="bg-primary/10 text-primary border-0 text-sm font-semibold px-4 py-1.5 rounded-full gap-1.5">
               <Rocket className="w-3.5 h-3.5" />
-              Free Demo — No Payment Required
+              {isHindi
+                ? "मुफ़्त डेमो — कोई भुगतान नहीं"
+                : "Free Demo — No Payment Required"}
             </Badge>
           </div>
 
           {/* Headline */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-display font-bold text-foreground leading-[1.08] tracking-tight mb-6">
-            Websites That{" "}
-            <span className="text-gradient-indigo">Bring Local</span>
-            <br className="hidden sm:block" /> Customers
+            {isHindi ? (
+              <>
+                वेबसाइट जो{" "}
+                <span className="text-gradient-indigo">लोकल ग्राहक</span>
+                <br className="hidden sm:block" /> लाती है
+              </>
+            ) : (
+              <>
+                Websites That{" "}
+                <span className="text-gradient-indigo">Bring Local</span>
+                <br className="hidden sm:block" /> Customers
+              </>
+            )}
           </h1>
 
           {/* Subheadline */}
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-            We build professional websites for{" "}
-            <strong className="text-foreground font-semibold">
-              gyms, salons, coaching institutes, clinics, and shops
-            </strong>
-            . Mobile-friendly. Fast delivery. Free demo first.
+            {isHindi ? (
+              <>
+                हम बनाते हैं प्रोफ़ेशनल वेबसाइट —{" "}
+                <strong className="text-foreground font-semibold">
+                  जिम, सैलून, कोचिंग, क्लिनिक और दुकानों
+                </strong>{" "}
+                के लिए। मोबाइल फ्रेंडली। जल्दी डिलीवरी। पहले मुफ़्त डेमो।
+              </>
+            ) : (
+              <>
+                We build professional websites for{" "}
+                <strong className="text-foreground font-semibold">
+                  gyms, salons, coaching institutes, clinics, and shops
+                </strong>
+                . Mobile-friendly. Fast delivery. Free demo first.
+              </>
+            )}
           </p>
 
           {/* CTA Buttons */}
@@ -273,7 +549,7 @@ function Hero() {
               onClick={() => scrollTo("demo-form")}
               data-ocid="hero.primary_button"
             >
-              Get My Free Demo
+              {isHindi ? "मुफ़्त डेमो पाएं" : "Get My Free Demo"}
             </Button>
             <Button
               size="lg"
@@ -282,13 +558,15 @@ function Hero() {
               onClick={() => scrollTo("pricing")}
               data-ocid="hero.secondary_button"
             >
-              View Pricing
+              {isHindi ? "प्राइसिंग देखें" : "View Pricing"}
             </Button>
           </div>
 
           {/* Microcopy */}
           <p className="mt-5 text-sm text-muted-foreground">
-            No payment. No obligation. We'll build a preview first.
+            {isHindi
+              ? "कोई भुगतान नहीं। कोई दबाव नहीं। पहले प्रीव्यू बनाएंगे।"
+              : "No payment. No obligation. We'll build a preview first."}
           </p>
 
           {/* Trust badges */}
@@ -316,14 +594,14 @@ function Hero() {
 /* ═══════════════════════════════════════════════════════════
    FOOTER
 ═══════════════════════════════════════════════════════════ */
-function Footer() {
+function Footer({ isHindi }: { isHindi: boolean }) {
   const quickLinks = [
-    { label: "Home", id: "hero" },
-    { label: "About", id: "about" },
-    { label: "Services", id: "services" },
-    { label: "Pricing", id: "pricing" },
+    { label: isHindi ? "होम" : "Home", id: "hero" },
+    { label: isHindi ? "हमारे बारे में" : "About", id: "about" },
+    { label: isHindi ? "सेवाएं" : "Services", id: "services" },
+    { label: isHindi ? "प्राइसिंग" : "Pricing", id: "pricing" },
     { label: "FAQ", id: "faq" },
-    { label: "Contact", id: "contact" },
+    { label: isHindi ? "संपर्क" : "Contact", id: "contact" },
   ];
 
   return (
@@ -344,18 +622,21 @@ function Footer() {
               </span>
             </div>
             <p className="text-white/60 text-sm leading-relaxed mb-5">
-              Building digital presence for local businesses. Professional
-              websites that help you get more customers online.
+              {isHindi
+                ? "लोकल बिज़नेस के लिए डिजिटल उपस्थिति बनाना।"
+                : "Building digital presence for local businesses. Professional websites that help you get more customers online."}
             </p>
             <p className="text-white/40 text-xs">
-              Mon–Sat: 9AM–7PM | Sunday: WhatsApp only
+              {isHindi
+                ? "सोम–शनि: सुबह 9 – शाम 7 | रविवार: सिर्फ व्हाट्सएप"
+                : "Mon–Sat: 9AM–7PM | Sunday: WhatsApp only"}
             </p>
           </div>
 
           {/* Col 2: Quick Links */}
           <div>
             <h3 className="font-display font-bold text-white text-sm uppercase tracking-wider mb-5">
-              Quick Links
+              {isHindi ? "त्वरित लिंक" : "Quick Links"}
             </h3>
             <nav aria-label="Footer navigation">
               <ul className="space-y-2.5">
@@ -379,7 +660,7 @@ function Footer() {
           {/* Col 3: Contact */}
           <div>
             <h3 className="font-display font-bold text-white text-sm uppercase tracking-wider mb-5">
-              Get In Touch
+              {isHindi ? "संपर्क करें" : "Get In Touch"}
             </h3>
             <ul className="space-y-4">
               <li>
@@ -417,7 +698,9 @@ function Footer() {
                   <span className="w-8 h-8 rounded-lg bg-white/10 group-hover:bg-green-600/30 flex items-center justify-center flex-shrink-0 transition-colors">
                     <MessageCircle className="w-3.5 h-3.5" />
                   </span>
-                  <span className="text-sm">WhatsApp Us</span>
+                  <span className="text-sm">
+                    {isHindi ? "व्हाट्सएप करें" : "WhatsApp Us"}
+                  </span>
                 </a>
               </li>
             </ul>
@@ -431,7 +714,7 @@ function Footer() {
               data-ocid="footer.link"
             >
               <MessageCircle className="w-4 h-4" />
-              Chat on WhatsApp
+              {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
             </a>
           </div>
         </div>
@@ -491,12 +774,18 @@ function WhatsAppFloat() {
 /* ═══════════════════════════════════════════════════════════
    ABOUT
 ═══════════════════════════════════════════════════════════ */
-function About() {
-  const stats = [
-    { value: "50+", label: "Websites Built" },
-    { value: "3–7", label: "Day Delivery" },
-    { value: "100%", label: "Satisfaction" },
-  ];
+function About({ isHindi }: { isHindi: boolean }) {
+  const stats = isHindi
+    ? [
+        { value: "50+", label: "वेबसाइट बनाई" },
+        { value: "3–7", label: "दिन डिलीवरी" },
+        { value: "100%", label: "संतुष्टि" },
+      ]
+    : [
+        { value: "50+", label: "Websites Built" },
+        { value: "3–7", label: "Day Delivery" },
+        { value: "100%", label: "Satisfaction" },
+      ];
 
   return (
     <section
@@ -507,7 +796,7 @@ function About() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Section label */}
         <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3 text-center lg:text-left">
-          About Us
+          {isHindi ? "हमारे बारे में" : "About Us"}
         </p>
 
         <div
@@ -520,19 +809,43 @@ function About() {
               id="about-heading"
               className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-5"
             >
-              A Web Studio Built{" "}
-              <span className="text-gradient-indigo">For Local Businesses</span>
+              {isHindi ? (
+                <>
+                  लोकल बिज़नेस के लिए{" "}
+                  <span className="text-gradient-indigo">बना वेब स्टूडियो</span>
+                </>
+              ) : (
+                <>
+                  A Web Studio Built{" "}
+                  <span className="text-gradient-indigo">
+                    For Local Businesses
+                  </span>
+                </>
+              )}
             </h2>
 
             <p className="text-base md:text-lg text-muted-foreground leading-relaxed mb-8">
-              LocalBoost Web is a freelance web studio helping local businesses
-              —{" "}
-              <strong className="text-foreground font-semibold">
-                gyms, salons, coaching institutes, clinics, and shops
-              </strong>{" "}
-              — build their online presence affordably and fast. We make it
-              simple: free demo first, transparent pricing, and a site live in
-              days — not weeks.
+              {isHindi ? (
+                <>
+                  LocalBoost Web एक फ्रीलांस वेब स्टूडियो है जो लोकल बिज़नेस —{" "}
+                  <strong className="text-foreground font-semibold">
+                    जिम, सैलून, कोचिंग, क्लिनिक और दुकानों
+                  </strong>{" "}
+                  — को ऑनलाइन लाता है। सरल प्रक्रिया: पहले मुफ़्त डेमो, पारदर्शी कीमत, और
+                  कुछ दिनों में साइट लाइव।
+                </>
+              ) : (
+                <>
+                  LocalBoost Web is a freelance web studio helping local
+                  businesses —{" "}
+                  <strong className="text-foreground font-semibold">
+                    gyms, salons, coaching institutes, clinics, and shops
+                  </strong>{" "}
+                  — build their online presence affordably and fast. We make it
+                  simple: free demo first, transparent pricing, and a site live
+                  in days — not weeks.
+                </>
+              )}
             </p>
 
             {/* Stats row */}
@@ -566,9 +879,22 @@ function About() {
                   <Rocket className="w-4 h-4 text-primary" />
                 </span>
                 <p className="text-sm md:text-base font-medium text-foreground leading-relaxed">
-                  <span className="font-bold text-primary">Our mission —</span>{" "}
-                  one great website at a time, helping every local business get
-                  found online.
+                  {isHindi ? (
+                    <>
+                      <span className="font-bold text-primary">
+                        हमारा लक्ष्य —
+                      </span>{" "}
+                      एक-एक बढ़िया वेबसाइट से हर लोकल बिज़नेस को ऑनलाइन लाना।
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-primary">
+                        Our mission —
+                      </span>{" "}
+                      one great website at a time, helping every local business
+                      get found online.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -692,7 +1018,19 @@ const SERVICES: ServiceCard[] = [
   },
 ];
 
-function Services() {
+const SERVICES_HINDI_TITLES = [
+  "बिज़नेस वेबसाइट बनाना",
+  "जिम वेबसाइट",
+  "कोचिंग इंस्टीट्यूट वेबसाइट",
+  "सैलून वेबसाइट",
+  "क्लिनिक वेबसाइट",
+  "दुकान वेबसाइट",
+  "गूगल मैप्स इंटीग्रेशन",
+  "व्हाट्सएप इंटीग्रेशन",
+  "मोबाइल-फ्रेंडली डिज़ाइन",
+];
+
+function Services({ isHindi }: { isHindi: boolean }) {
   return (
     <section
       id="services"
@@ -703,17 +1041,28 @@ function Services() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Our Services
+            {isHindi ? "हमारी सेवाएं" : "Our Services"}
           </p>
           <h2
             id="services-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            What We <span className="text-gradient-indigo">Build For You</span>
+            {isHindi ? (
+              <>
+                हम आपके लिए{" "}
+                <span className="text-gradient-indigo">क्या बनाते हैं</span>
+              </>
+            ) : (
+              <>
+                What We{" "}
+                <span className="text-gradient-indigo">Build For You</span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            From simple business pages to feature-rich websites — everything a
-            local business needs to get found and grow online.
+            {isHindi
+              ? "सिंपल बिज़नेस पेज से लेकर फीचर-रिच वेबसाइट तक — हर वो चीज़ जो लोकल बिज़नेस को ऑनलाइन आने के लिए चाहिए।"
+              : "From simple business pages to feature-rich websites — everything a local business needs to get found and grow online."}
           </p>
         </div>
 
@@ -739,7 +1088,7 @@ function Services() {
                 {/* Text */}
                 <div>
                   <h3 className="font-display font-bold text-base text-foreground mb-1.5 group-hover:text-primary transition-colors">
-                    {service.title}
+                    {isHindi ? SERVICES_HINDI_TITLES[index] : service.title}
                   </h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {service.description}
@@ -758,10 +1107,12 @@ function Services() {
             onClick={() => scrollTo("demo-form")}
             data-ocid="services.primary_button"
           >
-            Get My Free Demo Website
+            {isHindi ? "मुफ़्त डेमो वेबसाइट पाएं" : "Get My Free Demo Website"}
           </Button>
           <p className="mt-3 text-sm text-muted-foreground">
-            No payment required · We build a preview first
+            {isHindi
+              ? "कोई भुगतान नहीं · पहले प्रीव्यू बनाते हैं"
+              : "No payment required · We build a preview first"}
           </p>
         </div>
       </div>
@@ -806,7 +1157,18 @@ const BENEFITS: BenefitCard[] = [
   },
 ];
 
-function WhyChooseUs() {
+const BENEFITS_HINDI = [
+  { title: "जल्दी डिलीवरी", description: "3–7 कार्य दिवसों में।" },
+  { title: "किफायती कीमत", description: "₹2,999 से शुरू। कोई छुपी फीस नहीं।" },
+  { title: "मोबाइल-फ्रेंडली", description: "हर साइट मोबाइल-फर्स्ट।" },
+  {
+    title: "लोकल बिज़नेस के लिए",
+    description: "जिम, सैलून, क्लिनिक, दुकान को समझते हैं।",
+  },
+  { title: "व्हाट्सएप सपोर्ट", description: "जल्दी मदद के लिए व्हाट्सएप पर संपर्क करें।" },
+];
+
+function WhyChooseUs({ isHindi }: { isHindi: boolean }) {
   return (
     <section
       id="why-us"
@@ -817,18 +1179,28 @@ function WhyChooseUs() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Why Choose Us
+            {isHindi ? "हमें क्यों चुनें" : "Why Choose Us"}
           </p>
           <h2
             id="why-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            Why Local Businesses{" "}
-            <span className="text-gradient-indigo">Choose Us</span>
+            {isHindi ? (
+              <>
+                लोकल बिज़नेस{" "}
+                <span className="text-gradient-indigo">हमें क्यों चुनते हैं</span>
+              </>
+            ) : (
+              <>
+                Why Local Businesses{" "}
+                <span className="text-gradient-indigo">Choose Us</span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            Simple, transparent, and built around what small businesses actually
-            need.
+            {isHindi
+              ? "सरल, पारदर्शी, और छोटे बिज़नेस की ज़रूरतों के अनुसार।"
+              : "Simple, transparent, and built around what small businesses actually need."}
           </p>
         </div>
 
@@ -837,6 +1209,7 @@ function WhyChooseUs() {
           {BENEFITS.map((benefit, index) => {
             const Icon = benefit.icon;
             const ocid = `why.item.${index + 1}` as const;
+            const hindiData = BENEFITS_HINDI[index];
             return (
               <div
                 key={benefit.title}
@@ -851,10 +1224,10 @@ function WhyChooseUs() {
                 {/* Text */}
                 <div>
                   <h3 className="font-display font-bold text-sm md:text-base text-foreground mb-1.5 group-hover:text-primary transition-colors">
-                    {benefit.title}
+                    {isHindi ? hindiData.title : benefit.title}
                   </h3>
                   <p className="text-xs md:text-sm text-muted-foreground leading-relaxed">
-                    {benefit.description}
+                    {isHindi ? hindiData.description : benefit.description}
                   </p>
                 </div>
               </div>
@@ -866,10 +1239,14 @@ function WhyChooseUs() {
         <div className="mt-12 rounded-2xl bg-gradient-to-r from-primary/8 via-teal/5 to-primary/8 border border-primary/15 p-5 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-5">
           <div className="text-center sm:text-left">
             <p className="font-display font-bold text-foreground text-base md:text-lg">
-              Fast delivery · Mobile friendly · Free demo first
+              {isHindi
+                ? "जल्दी डिलीवरी · मोबाइल फ्रेंडली · पहले मुफ़्त डेमो"
+                : "Fast delivery · Mobile friendly · Free demo first"}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Prices start at ₹2,999 — final quote based on features.
+              {isHindi
+                ? "कीमत ₹2,999 से शुरू — सुविधाओं के हिसाब से अंतिम कोटेशन।"
+                : "Prices start at ₹2,999 — final quote based on features."}
             </p>
           </div>
           <Button
@@ -877,8 +1254,250 @@ function WhyChooseUs() {
             onClick={() => scrollTo("demo-form")}
             data-ocid="why.primary_button"
           >
-            Get Free Demo
+            {isHindi ? "मुफ़्त डेमो पाएं" : "Get Free Demo"}
           </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPARISON TABLE
+═══════════════════════════════════════════════════════════ */
+interface ComparisonRow {
+  feature: string;
+  featureHindi: string;
+  localboost: string;
+  freelancer: string;
+  diy: string;
+  localboostPositive?: boolean;
+}
+
+const COMPARISON_ROWS: ComparisonRow[] = [
+  {
+    feature: "Starting Price",
+    featureHindi: "शुरुआती कीमत",
+    localboost: "₹2,999",
+    freelancer: "₹8,000–₹25,000",
+    diy: "₹1,500/month",
+    localboostPositive: true,
+  },
+  {
+    feature: "Delivery Time",
+    featureHindi: "डिलीवरी का समय",
+    localboost: "3–7 days",
+    freelancer: "3–6 weeks",
+    diy: "You do it yourself",
+    localboostPositive: true,
+  },
+  {
+    feature: "Mobile-Friendly",
+    featureHindi: "मोबाइल-फ्रेंडली",
+    localboost: "✓ Always",
+    freelancer: "Varies",
+    diy: "Template only",
+    localboostPositive: true,
+  },
+  {
+    feature: "Local Business Focus",
+    featureHindi: "लोकल बिज़नेस फोकस",
+    localboost: "✓ Specialised",
+    freelancer: "Rarely",
+    diy: "No",
+    localboostPositive: true,
+  },
+  {
+    feature: "Free Demo First",
+    featureHindi: "पहले मुफ़्त डेमो",
+    localboost: "✓ Yes",
+    freelancer: "Rarely",
+    diy: "No",
+    localboostPositive: true,
+  },
+  {
+    feature: "WhatsApp Support",
+    featureHindi: "व्हाट्सएप सपोर्ट",
+    localboost: "✓ Direct",
+    freelancer: "Rarely",
+    diy: "No",
+    localboostPositive: true,
+  },
+  {
+    feature: "Revisions Included",
+    featureHindi: "रिवीज़न शामिल",
+    localboost: "✓ 1–3 included",
+    freelancer: "Extra cost",
+    diy: "Unlimited (DIY)",
+    localboostPositive: true,
+  },
+  {
+    feature: "Ongoing Support",
+    featureHindi: "आगे की सपोर्ट",
+    localboost: "✓ WhatsApp",
+    freelancer: "Extra cost",
+    diy: "No human help",
+    localboostPositive: true,
+  },
+];
+
+function ComparisonTable({ isHindi }: { isHindi: boolean }) {
+  return (
+    <section
+      id="comparison"
+      data-ocid="comparison.panel"
+      className="py-20 md:py-28 bg-white overflow-hidden"
+      aria-labelledby="comparison-heading"
+    >
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        {/* Section header */}
+        <div className="text-center mb-12 md:mb-16">
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
+            {isHindi ? "हमें क्यों चुनें" : "Why Choose Us"}
+          </p>
+          <h2
+            id="comparison-heading"
+            className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
+          >
+            {isHindi ? (
+              <>
+                LocalBoost Web{" "}
+                <span className="text-gradient-indigo">बनाम अन्य विकल्प</span>
+              </>
+            ) : (
+              <>
+                LocalBoost Web{" "}
+                <span className="text-gradient-indigo">vs. Other Options</span>
+              </>
+            )}
+          </h2>
+          <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
+            {isHindi
+              ? "देखें कि हम फ्रीलांसर या खुद बनाने से कैसे बेहतर हैं।"
+              : "See how we compare to hiring a freelancer or building it yourself."}
+          </p>
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block rounded-2xl border border-border overflow-hidden shadow-lg shadow-primary/5">
+          <table
+            data-ocid="comparison.table"
+            className="w-full text-sm"
+            aria-label="LocalBoost Web comparison table"
+          >
+            <thead>
+              <tr>
+                <th className="bg-accent/60 text-left px-6 py-4 font-semibold text-muted-foreground text-xs uppercase tracking-wider w-[32%]">
+                  {isHindi ? "सुविधा" : "Feature"}
+                </th>
+                <th className="bg-primary text-primary-foreground px-6 py-4 font-bold text-center text-sm w-[23%]">
+                  <span className="flex flex-col items-center gap-1">
+                    <Shield className="w-4 h-4 opacity-80" />
+                    LocalBoost Web
+                  </span>
+                </th>
+                <th className="bg-accent/60 text-center px-6 py-4 font-semibold text-muted-foreground text-xs uppercase tracking-wider w-[22%]">
+                  {isHindi ? "अन्य फ्रीलांसर" : "Other Freelancer"}
+                </th>
+                <th className="bg-accent/60 text-center px-6 py-4 font-semibold text-muted-foreground text-xs uppercase tracking-wider w-[23%]">
+                  {isHindi ? "खुद बनाएं" : "DIY (Wix/Squarespace)"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON_ROWS.map((row, i) => (
+                <tr
+                  key={row.feature}
+                  className={i % 2 === 0 ? "bg-white" : "bg-accent/20"}
+                >
+                  <td className="px-6 py-4 font-medium text-foreground">
+                    {isHindi ? row.featureHindi : row.feature}
+                  </td>
+                  <td className="px-6 py-4 text-center bg-primary/5 border-x border-primary/10">
+                    <span className="inline-flex items-center justify-center gap-1.5 font-semibold text-primary">
+                      {row.localboostPositive && (
+                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      )}
+                      {row.localboost.replace("✓ ", "")}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center text-muted-foreground">
+                    {row.freelancer}
+                  </td>
+                  <td className="px-6 py-4 text-center text-muted-foreground">
+                    {row.diy}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card layout */}
+        <div className="md:hidden flex flex-col gap-4">
+          {COMPARISON_ROWS.map((row) => (
+            <div
+              key={row.feature}
+              className="rounded-2xl border border-border overflow-hidden shadow-xs"
+            >
+              {/* Feature header */}
+              <div className="bg-accent/60 px-4 py-3">
+                <p className="font-semibold text-sm text-foreground">
+                  {isHindi ? row.featureHindi : row.feature}
+                </p>
+              </div>
+              {/* Values */}
+              <div className="grid grid-cols-3 divide-x divide-border">
+                {/* LocalBoost */}
+                <div className="bg-primary/5 px-3 py-3 flex flex-col items-center gap-1 text-center">
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide">
+                    LocalBoost
+                  </span>
+                  <span className="text-xs font-semibold text-primary flex items-start gap-1">
+                    {row.localboostPositive && (
+                      <CheckCircle className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
+                    )}
+                    {row.localboost.replace("✓ ", "")}
+                  </span>
+                </div>
+                {/* Freelancer */}
+                <div className="px-3 py-3 flex flex-col items-center gap-1 text-center">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    {isHindi ? "फ्रीलांसर" : "Freelancer"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {row.freelancer}
+                  </span>
+                </div>
+                {/* DIY */}
+                <div className="px-3 py-3 flex flex-col items-center gap-1 text-center">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    DIY
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {row.diy}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="text-center mt-12">
+          <Button
+            size="lg"
+            onClick={() => scrollTo("demo-form")}
+            data-ocid="comparison.primary_button"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-10 h-14 rounded-full shadow-lg shadow-primary/25 transition-all hover:scale-105 text-base"
+          >
+            {isHindi ? "अभी मुफ़्त डेमो पाएं" : "Get Free Demo Now"}
+          </Button>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {isHindi
+              ? "कोई भुगतान नहीं · पहले प्रीव्यू बनाते हैं"
+              : "No payment required · We build a preview first"}
+          </p>
         </div>
       </div>
     </section>
@@ -958,7 +1577,7 @@ const DEMO_TEMPLATES: DemoTemplate[] = [
   },
 ];
 
-function Portfolio() {
+function Portfolio({ isHindi }: { isHindi: boolean }) {
   return (
     <section
       id="demos"
@@ -969,20 +1588,30 @@ function Portfolio() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Demo Templates
+            {isHindi ? "डेमो टेम्पलेट" : "Demo Templates"}
           </p>
           <h2
             id="demos-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            See What Your{" "}
-            <span className="text-gradient-indigo">
-              Website Could Look Like
-            </span>
+            {isHindi ? (
+              <>
+                देखें आपकी वेबसाइट{" "}
+                <span className="text-gradient-indigo">कैसी दिख सकती है</span>
+              </>
+            ) : (
+              <>
+                See What Your{" "}
+                <span className="text-gradient-indigo">
+                  Website Could Look Like
+                </span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Preview three real website templates built for local businesses.
-            Each one is fully customised for your brand, content, and location.
+            {isHindi
+              ? "तीन असली वेबसाइट टेम्पलेट देखें जो लोकल बिज़नेस के लिए बनाए गए हैं।"
+              : "Preview three real website templates built for local businesses. Each one is fully customised for your brand, content, and location."}
           </p>
         </div>
 
@@ -1054,7 +1683,7 @@ function Portfolio() {
                       data-ocid="demos.primary_button"
                       className="flex-1 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold h-10 rounded-full transition-all hover:scale-105 shadow-sm shadow-primary/20"
                     >
-                      View Live Preview
+                      {isHindi ? "लाइव प्रीव्यू देखें" : "View Live Preview"}
                     </a>
                     <button
                       type="button"
@@ -1062,7 +1691,7 @@ function Portfolio() {
                       data-ocid="demos.secondary_button"
                       className="flex-1 inline-flex items-center justify-center gap-2 border-2 border-primary/30 text-primary hover:bg-primary hover:text-white text-sm font-semibold h-10 rounded-full transition-all"
                     >
-                      Request This Style
+                      {isHindi ? "यह स्टाइल मांगें" : "Request This Style"}
                     </button>
                   </div>
                 </div>
@@ -1072,8 +1701,9 @@ function Portfolio() {
         </div>
 
         <p className="text-center text-sm text-muted-foreground mt-8">
-          All demos are for illustration only. Your actual site will use your
-          real business name, photos, and content.
+          {isHindi
+            ? "सभी डेमो सिर्फ उदाहरण के लिए हैं। आपकी असली साइट आपके बिज़नेस के नाम, फोटो और कंटेंट से बनेगी।"
+            : "All demos are for illustration only. Your actual site will use your real business name, photos, and content."}
         </p>
       </div>
     </section>
@@ -2039,7 +2669,11 @@ function SalonPreview({
 /* ═══════════════════════════════════════════════════════════
    PART 4 — FREE DEMO BANNER
 ═══════════════════════════════════════════════════════════ */
-function FreeDemoBanner() {
+function FreeDemoBanner({ isHindi }: { isHindi: boolean }) {
+  const trustItems = isHindi
+    ? ["मुफ़्त डेमो", "कोई भुगतान नहीं", "कोई दबाव नहीं"]
+    : ["Free Demo", "No Payment", "No Obligation"];
+
   return (
     <section
       id="free-demo-banner"
@@ -2079,13 +2713,23 @@ function FreeDemoBanner() {
           id="free-demo-heading"
           className="text-3xl sm:text-4xl md:text-5xl font-display font-bold text-white leading-tight mb-5"
         >
-          We Create Your Preview Website{" "}
-          <span className="text-yellow-300">First — For Free</span>
+          {isHindi ? (
+            <>
+              हम पहले आपकी प्रीव्यू वेबसाइट बनाते हैं —{" "}
+              <span className="text-yellow-300">मुफ़्त</span>
+            </>
+          ) : (
+            <>
+              We Create Your Preview Website{" "}
+              <span className="text-yellow-300">First — For Free</span>
+            </>
+          )}
         </h2>
 
         <p className="text-lg md:text-xl text-white/85 mb-8 max-w-2xl mx-auto leading-relaxed">
-          No payment. No commitment. We build a preview website for your
-          business. If you like it, we continue. If not — no charge.
+          {isHindi
+            ? "कोई भुगतान नहीं। कोई दबाव नहीं। आपके बिज़नेस के लिए एक प्रीव्यू वेबसाइट बनाएंगे। अगर पसंद आए, आगे बढ़ें। नहीं तो — कोई फीस नहीं।"
+            : "No payment. No commitment. We build a preview website for your business. If you like it, we continue. If not — no charge."}
         </p>
 
         <Button
@@ -2094,12 +2738,12 @@ function FreeDemoBanner() {
           data-ocid="banner.primary_button"
           className="bg-white text-primary hover:bg-indigo-50 font-bold px-10 h-14 rounded-full shadow-xl transition-all hover:scale-105 text-base"
         >
-          Request Your Free Demo
+          {isHindi ? "मुफ़्त डेमो मांगें" : "Request Your Free Demo"}
         </Button>
 
         {/* Trust line */}
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-7">
-          {["Free Demo", "No Payment", "No Obligation"].map((item) => (
+          {trustItems.map((item) => (
             <div
               key={item}
               className="flex items-center gap-1.5 text-white/80 text-sm font-medium"
@@ -2119,15 +2763,72 @@ function FreeDemoBanner() {
 ═══════════════════════════════════════════════════════════ */
 type FormStatus = "idle" | "loading" | "success" | "error";
 
-function DemoRequestForm() {
+function DemoRequestForm({ isHindi }: { isHindi: boolean }) {
   const { actor } = useActor();
-  const [businessName, setBusinessName] = useState("");
-  const [businessType, setBusinessType] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [language, setLanguage] = useState("English");
-  const [message, setMessage] = useState("");
+
+  // Load draft from localStorage on mount
+  const [businessName, setBusinessName] = useState(() => {
+    try {
+      const draft = localStorage.getItem("lb_demo_draft");
+      return draft ? (JSON.parse(draft).businessName ?? "") : "";
+    } catch {
+      return "";
+    }
+  });
+  const [businessType, setBusinessType] = useState(() => {
+    try {
+      const draft = localStorage.getItem("lb_demo_draft");
+      return draft ? (JSON.parse(draft).businessType ?? "") : "";
+    } catch {
+      return "";
+    }
+  });
+  const [phoneNumber, setPhoneNumber] = useState(() => {
+    try {
+      const draft = localStorage.getItem("lb_demo_draft");
+      return draft ? (JSON.parse(draft).phone ?? "") : "";
+    } catch {
+      return "";
+    }
+  });
+  const [language, setLanguage] = useState(() => {
+    try {
+      const draft = localStorage.getItem("lb_demo_draft");
+      return draft ? (JSON.parse(draft).language ?? "English") : "English";
+    } catch {
+      return "English";
+    }
+  });
+  const [message, setMessage] = useState(() => {
+    try {
+      const draft = localStorage.getItem("lb_demo_draft");
+      return draft ? (JSON.parse(draft).message ?? "") : "";
+    } catch {
+      return "";
+    }
+  });
   const [status, setStatus] = useState<FormStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [hasDraft, setHasDraft] = useState(
+    () => localStorage.getItem("lb_demo_draft") !== null,
+  );
+
+  // Auto-save draft to localStorage whenever form values change
+  useEffect(() => {
+    if (status === "success") return;
+    const draft = {
+      businessName,
+      businessType,
+      phone: phoneNumber,
+      language,
+      message,
+    };
+    const hasContent = businessName || businessType || phoneNumber || message;
+    if (hasContent) {
+      localStorage.setItem("lb_demo_draft", JSON.stringify(draft));
+      setHasDraft(true);
+    }
+  }, [businessName, businessType, phoneNumber, language, message, status]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -2155,6 +2856,9 @@ function DemoRequestForm() {
         language,
         message.trim() || null,
       );
+      // Clear draft on successful submit
+      localStorage.removeItem("lb_demo_draft");
+      setHasDraft(false);
       setStatus("success");
     } catch (err) {
       console.error(err);
@@ -2191,12 +2895,22 @@ function DemoRequestForm() {
             </div>
             <div>
               <h3 className="font-display font-bold text-2xl text-foreground mb-2">
-                Preview request received!
+                {isHindi ? "प्रीव्यू अनुरोध मिल गया!" : "Preview request received!"}
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                We'll build your demo site and WhatsApp you in{" "}
-                <strong className="text-foreground">24–48 hours</strong>. Thank
-                you for reaching out!
+                {isHindi ? (
+                  <>
+                    हम आपकी डेमो साइट बनाकर{" "}
+                    <strong className="text-foreground">24–48 घंटों</strong> में
+                    व्हाट्सएप करेंगे।
+                  </>
+                ) : (
+                  <>
+                    We'll build your demo site and WhatsApp you in{" "}
+                    <strong className="text-foreground">24–48 hours</strong>.
+                    Thank you for reaching out!
+                  </>
+                )}
               </p>
             </div>
             <a
@@ -2207,9 +2921,11 @@ function DemoRequestForm() {
               className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-full transition-all hover:scale-105 shadow-lg shadow-green-200"
             >
               <MessageCircle className="w-5 h-5" />
-              {language === "Hindi"
-                ? "WhatsApp Par Message Karein"
-                : "Message Us on WhatsApp"}
+              {isHindi
+                ? "व्हाट्सएप पर संदेश करें"
+                : language === "Hindi"
+                  ? "WhatsApp Par Message Karein"
+                  : "Message Us on WhatsApp"}
             </a>
             <button
               type="button"
@@ -2220,10 +2936,12 @@ function DemoRequestForm() {
                 setPhoneNumber("");
                 setLanguage("English");
                 setMessage("");
+                localStorage.removeItem("lb_demo_draft");
+                setHasDraft(false);
               }}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Submit another request
+              {isHindi ? "दूसरा अनुरोध भेजें" : "Submit another request"}
             </button>
           </div>
         </div>
@@ -2241,18 +2959,30 @@ function DemoRequestForm() {
         {/* Section header */}
         <div className="text-center mb-10">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Get Your Free Demo
+            {isHindi ? "मुफ़्त डेमो पाएं" : "Get Your Free Demo"}
           </p>
           <h2
             id="demo-form-heading"
             className="font-display font-bold text-3xl sm:text-4xl text-foreground leading-tight mb-4"
           >
-            Request Your{" "}
-            <span className="text-gradient-indigo">Free Preview Website</span>
+            {isHindi ? (
+              <>
+                मुफ़्त{" "}
+                <span className="text-gradient-indigo">प्रीव्यू वेबसाइट मांगें</span>
+              </>
+            ) : (
+              <>
+                Request Your{" "}
+                <span className="text-gradient-indigo">
+                  Free Preview Website
+                </span>
+              </>
+            )}
           </h2>
           <p className="text-base text-muted-foreground max-w-lg mx-auto">
-            Fill in the form below and we'll build a preview website for your
-            business — completely free, no obligation.
+            {isHindi
+              ? "नीचे फ़ॉर्म भरें और हम आपके बिज़नेस के लिए एक प्रीव्यू वेबसाइट बनाएंगे — बिल्कुल मुफ़्त, कोई दबाव नहीं।"
+              : "Fill in the form below and we'll build a preview website for your business — completely free, no obligation."}
           </p>
         </div>
 
@@ -2269,7 +2999,8 @@ function DemoRequestForm() {
                 htmlFor="biz-name"
                 className="font-semibold text-sm text-foreground"
               >
-                Business Name <span className="text-destructive">*</span>
+                {isHindi ? "बिज़नेस का नाम" : "Business Name"}{" "}
+                <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="biz-name"
@@ -2291,7 +3022,8 @@ function DemoRequestForm() {
                 htmlFor="biz-type"
                 className="font-semibold text-sm text-foreground"
               >
-                Business Type <span className="text-destructive">*</span>
+                {isHindi ? "बिज़नेस का प्रकार" : "Business Type"}{" "}
+                <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={businessType}
@@ -2303,7 +3035,11 @@ function DemoRequestForm() {
                   data-ocid="demo-form.select"
                   className="h-11 text-base"
                 >
-                  <SelectValue placeholder="Select your business type" />
+                  <SelectValue
+                    placeholder={
+                      isHindi ? "अपना बिज़नेस चुनें" : "Select your business type"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Gym">Gym / Fitness Centre</SelectItem>
@@ -2324,7 +3060,8 @@ function DemoRequestForm() {
                 htmlFor="phone"
                 className="font-semibold text-sm text-foreground"
               >
-                Phone Number <span className="text-destructive">*</span>
+                {isHindi ? "फ़ोन नंबर" : "Phone Number"}{" "}
+                <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="phone"
@@ -2346,7 +3083,7 @@ function DemoRequestForm() {
                 htmlFor="lang"
                 className="font-semibold text-sm text-foreground"
               >
-                Preferred Language
+                {isHindi ? "पसंदीदा भाषा" : "Preferred Language"}
               </Label>
               <Select
                 value={language}
@@ -2373,14 +3110,18 @@ function DemoRequestForm() {
                 htmlFor="msg"
                 className="font-semibold text-sm text-foreground"
               >
-                Message{" "}
+                {isHindi ? "संदेश" : "Message"}{" "}
                 <span className="text-muted-foreground font-normal">
-                  (optional)
+                  {isHindi ? "(वैकल्पिक)" : "(optional)"}
                 </span>
               </Label>
               <Textarea
                 id="msg"
-                placeholder="Tell us a bit about your business..."
+                placeholder={
+                  isHindi
+                    ? "अपने बिज़नेस के बारे में बताएं..."
+                    : "Tell us a bit about your business..."
+                }
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 disabled={status === "loading"}
@@ -2416,16 +3157,33 @@ function DemoRequestForm() {
                     className="w-5 h-5 animate-spin mr-2"
                     data-ocid="demo-form.loading_state"
                   />
-                  Submitting your request...
+                  {isHindi
+                    ? "अनुरोध भेजा जा रहा है..."
+                    : "Submitting your request..."}
                 </>
+              ) : isHindi ? (
+                "मुफ़्त डेमो वेबसाइट मांगें"
               ) : (
                 "Request Free Demo Website"
               )}
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              No payment required. We'll contact you within 24–48 hours.
+              {isHindi
+                ? "कोई भुगतान नहीं। हम 24–48 घंटों में संपर्क करेंगे।"
+                : "No payment required. We'll contact you within 24–48 hours."}
             </p>
+
+            {/* Draft saved indicator */}
+            {hasDraft && (
+              <div
+                data-ocid="demo_form.success_state"
+                className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <Cloud className="w-3.5 h-3.5 flex-shrink-0" />
+                {isHindi ? "ड्राफ्ट सहेजा गया" : "Draft saved"}
+              </div>
+            )}
           </form>
         </div>
       </div>
@@ -2700,9 +3458,9 @@ const HINDI_LABELS: Record<string, string> = {
   day: "दिन",
 };
 
-function AIHelper() {
+function AIHelper({ isHindi: globalIsHindi }: { isHindi: boolean }) {
   const [selected, setSelected] = useState<BusinessTypeKey | null>(null);
-  const [isHindi, setIsHindi] = useState(false);
+  const [isHindi, setIsHindi] = useState(globalIsHindi);
 
   const pages = selected ? AI_HELPER_DATA[selected] : [];
   const totalCost = pages.reduce((sum, p) => sum + p.cost, 0);
@@ -2940,17 +3698,32 @@ function AIHelper() {
    PART 6 — COST CALCULATOR
 ═══════════════════════════════════════════════════════════ */
 const ADDONS = [
-  { id: "contactForm", label: "Contact Form", price: 500 },
-  { id: "googleMaps", label: "Google Maps", price: 500 },
-  { id: "whatsapp", label: "WhatsApp Button", price: 300 },
-  { id: "gallery", label: "Gallery", price: 800 },
-  { id: "blog", label: "Blog", price: 1200 },
-  { id: "booking", label: "Online Booking", price: 1500 },
+  {
+    id: "contactForm",
+    label: "Contact Form",
+    labelHi: "संपर्क फॉर्म",
+    price: 500,
+  },
+  { id: "googleMaps", label: "Google Maps", labelHi: "गूगल मैप्स", price: 500 },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Button",
+    labelHi: "व्हाट्सएप बटन",
+    price: 300,
+  },
+  { id: "gallery", label: "Gallery", labelHi: "गैलरी", price: 800 },
+  { id: "blog", label: "Blog", labelHi: "ब्लॉग", price: 1200 },
+  {
+    id: "booking",
+    label: "Online Booking",
+    labelHi: "ऑनलाइन बुकिंग",
+    price: 1500,
+  },
 ] as const;
 
 type AddonId = (typeof ADDONS)[number]["id"];
 
-function CostCalculator() {
+function CostCalculator({ isHindi }: { isHindi: boolean }) {
   const [bizType, setBizType] = useState("Gym");
   const [pages, setPages] = useState(3);
   const [selectedAddons, setSelectedAddons] = useState<Set<AddonId>>(new Set());
@@ -2981,17 +3754,28 @@ function CostCalculator() {
         {/* Header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Cost Calculator
+            {isHindi ? "लागत कैलकुलेटर" : "Cost Calculator"}
           </p>
           <h2
             id="calculator-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            Estimate Your{" "}
-            <span className="text-gradient-indigo">Website Cost</span>
+            {isHindi ? (
+              <>
+                अपनी वेबसाइट की{" "}
+                <span className="text-gradient-indigo">लागत जानें</span>
+              </>
+            ) : (
+              <>
+                Estimate Your{" "}
+                <span className="text-gradient-indigo">Website Cost</span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto">
-            Adjust the options below to get an instant estimate in INR.
+            {isHindi
+              ? "नीचे के विकल्प चुनें और तुरंत INR में अनुमान पाएं।"
+              : "Adjust the options below to get an instant estimate in INR."}
           </p>
         </div>
 
@@ -3004,7 +3788,7 @@ function CostCalculator() {
                 htmlFor="calc-biz-type"
                 className="font-semibold text-sm text-foreground"
               >
-                Business Type
+                {isHindi ? "बिज़नेस का प्रकार" : "Business Type"}
               </Label>
               <Select value={bizType} onValueChange={setBizType}>
                 <SelectTrigger
@@ -3030,7 +3814,7 @@ function CostCalculator() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <Label className="font-semibold text-sm text-foreground">
-                  Number of Pages
+                  {isHindi ? "पेजों की संख्या" : "Number of Pages"}
                 </Label>
                 <span className="text-primary font-bold text-lg tabular-nums">
                   {pages}
@@ -3058,7 +3842,7 @@ function CostCalculator() {
             {/* Add-ons */}
             <div className="flex flex-col gap-3">
               <Label className="font-semibold text-sm text-foreground">
-                Add-on Features
+                {isHindi ? "अतिरिक्त सुविधाएं" : "Add-on Features"}
               </Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {ADDONS.map((addon) => {
@@ -3086,7 +3870,7 @@ function CostCalculator() {
                         <p
                           className={`text-sm font-medium ${checked ? "text-foreground" : "text-muted-foreground"}`}
                         >
-                          {addon.label}
+                          {isHindi ? addon.labelHi : addon.label}
                         </p>
                       </div>
                       <span
@@ -3145,7 +3929,7 @@ function CostCalculator() {
               {/* Grand total */}
               <div>
                 <p className="text-xs font-semibold text-primary/60 uppercase tracking-wider mb-1">
-                  Estimated Total
+                  {isHindi ? "अनुमानित कुल" : "Estimated Total"}
                 </p>
                 <p className="font-display font-bold text-5xl md:text-6xl text-foreground leading-none tabular-nums">
                   ₹{total.toLocaleString("en-IN")}
@@ -3162,11 +3946,13 @@ function CostCalculator() {
                 data-ocid="calculator.primary_button"
                 className="h-14 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-base shadow-xl shadow-primary/20 transition-all hover:scale-105"
               >
-                Request Exact Quote
+                {isHindi ? "सटीक कोटेशन मांगें" : "Request Exact Quote"}
               </Button>
 
               <p className="text-center text-xs text-muted-foreground">
-                Prices start at ₹2,999 — no payment needed for demo
+                {isHindi
+                  ? "कीमत ₹2,999 से शुरू — डेमो के लिए कोई भुगतान नहीं"
+                  : "Prices start at ₹2,999 — no payment needed for demo"}
               </p>
             </div>
           </div>
@@ -3242,7 +4028,7 @@ const PRICING_PLANS: PricingPlan[] = [
   },
 ];
 
-function Pricing() {
+function Pricing({ isHindi }: { isHindi: boolean }) {
   return (
     <section
       id="pricing"
@@ -3253,17 +4039,29 @@ function Pricing() {
         {/* Header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Pricing
+            {isHindi ? "मूल्य निर्धारण" : "Pricing"}
           </p>
           <h2
             id="pricing-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            Simple,{" "}
-            <span className="text-gradient-indigo">Transparent Pricing</span>
+            {isHindi ? (
+              <>
+                सरल, <span className="text-gradient-indigo">पारदर्शी कीमत</span>
+              </>
+            ) : (
+              <>
+                Simple,{" "}
+                <span className="text-gradient-indigo">
+                  Transparent Pricing
+                </span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto">
-            Prices start at ₹2,999 — final quote based on features.
+            {isHindi
+              ? "कीमत ₹2,999 से शुरू — सुविधाओं के हिसाब से।"
+              : "Prices start at ₹2,999 — final quote based on features."}
           </p>
         </div>
 
@@ -3331,7 +4129,7 @@ function Pricing() {
                   data-ocid="pricing.primary_button"
                   className={`h-12 rounded-full font-bold shadow-lg transition-all hover:scale-105 ${plan.ctaClass}`}
                 >
-                  Get Started
+                  {isHindi ? "शुरू करें" : "Get Started"}
                 </Button>
               </article>
             );
@@ -3345,10 +4143,12 @@ function Pricing() {
         >
           <div className="text-center sm:text-left">
             <p className="font-display font-bold text-foreground text-base">
-              Need something different?
+              {isHindi ? "कुछ अलग चाहिए?" : "Need something different?"}
             </p>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Get a custom quote for your exact requirements.
+              {isHindi
+                ? "अपनी ज़रूरत के हिसाब से कोटेशन पाएं।"
+                : "Get a custom quote for your exact requirements."}
             </p>
           </div>
           <a
@@ -3359,13 +4159,14 @@ function Pricing() {
             className="flex-shrink-0 inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-md shadow-green-200 text-sm"
           >
             <MessageCircle className="w-4 h-4" />
-            Chat on WhatsApp
+            {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
           </a>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Prices start at ₹2,999 — final quote based on features. No hidden
-          charges.
+          {isHindi
+            ? "कीमत ₹2,999 से शुरू — अंतिम कोटेशन सुविधाओं पर निर्भर। कोई छुपी फीस नहीं।"
+            : "Prices start at ₹2,999 — final quote based on features. No hidden charges."}
         </p>
       </div>
     </section>
@@ -4765,21 +5566,37 @@ function AdminDashboard() {
 /* ═══════════════════════════════════════════════════════════
    PART 10 — BEFORE vs AFTER SECTION
 ═══════════════════════════════════════════════════════════ */
-function BeforeAfterSection() {
-  const withoutItems = [
-    "Hard to find on Google",
-    "Losing customers to competitors",
-    "Looks less professional",
-    "Customers don't know your hours or prices",
-    "Missed leads every day",
-  ];
-  const withItems = [
-    "Found on Google Maps & Search",
-    "More customers contact you",
-    "Builds trust and credibility",
-    "Customers see your hours, prices, and services",
-    "Leads come to you 24/7",
-  ];
+function BeforeAfterSection({ isHindi }: { isHindi: boolean }) {
+  const withoutItems = isHindi
+    ? [
+        "ऑनलाइन ढूंढना मुश्किल",
+        "ग्राहक मिस हो जाते हैं",
+        "कम प्रोफ़ेशनल लगता है",
+        "टाइमिंग पता नहीं चलती",
+        "मुँह-ज़बानी पर निर्भरता",
+      ]
+    : [
+        "Hard to find on Google",
+        "Losing customers to competitors",
+        "Looks less professional",
+        "Customers don't know your hours or prices",
+        "Missed leads every day",
+      ];
+  const withItems = isHindi
+    ? [
+        "गूगल पर दिखते हैं",
+        "ज़्यादा ग्राहक आते हैं",
+        "भरोसा बनता है",
+        "संपर्क करना आसान",
+        "24/7 ऑनलाइन उपस्थिति",
+      ]
+    : [
+        "Found on Google Maps & Search",
+        "More customers contact you",
+        "Builds trust and credibility",
+        "Customers see your hours, prices, and services",
+        "Leads come to you 24/7",
+      ];
 
   return (
     <section
@@ -4791,19 +5608,29 @@ function BeforeAfterSection() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            The Difference
+            {isHindi ? "पहले और बाद में" : "The Difference"}
           </p>
           <h2
             id="before-after-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            See the{" "}
-            <span className="text-gradient-indigo">Real Difference</span> a
-            Website Makes
+            {isHindi ? (
+              <>
+                वेबसाइट से{" "}
+                <span className="text-gradient-indigo">क्या बदलता है?</span>
+              </>
+            ) : (
+              <>
+                See the{" "}
+                <span className="text-gradient-indigo">Real Difference</span> a
+                Website Makes
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto">
-            A website is not just a page — it's your 24/7 salesperson working
-            while you sleep.
+            {isHindi
+              ? "वेबसाइट सिर्फ एक पेज नहीं — यह आपका 24/7 काम करने वाला सेल्समैन है।"
+              : "A website is not just a page — it's your 24/7 salesperson working while you sleep."}
           </p>
         </div>
 
@@ -4819,7 +5646,7 @@ function BeforeAfterSection() {
                 <XCircle className="w-5 h-5 text-red-500" aria-hidden="true" />
               </span>
               <h3 className="font-display font-bold text-xl text-red-700">
-                Without a Website
+                {isHindi ? "वेबसाइट के बिना" : "Without a Website"}
               </h3>
             </div>
             <ul className="flex flex-col gap-3">
@@ -4846,7 +5673,7 @@ function BeforeAfterSection() {
                 />
               </span>
               <h3 className="font-display font-bold text-xl text-green-700">
-                With a Website
+                {isHindi ? "वेबसाइट के साथ" : "With a Website"}
               </h3>
             </div>
             <ul className="flex flex-col gap-3">
@@ -4875,10 +5702,12 @@ function BeforeAfterSection() {
             data-ocid="before-after.primary_button"
             className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-10 h-14 rounded-full shadow-xl shadow-primary/20 transition-all hover:scale-105 text-base"
           >
-            Get My Free Demo Website
+            {isHindi ? "अभी शुरू करें — मुफ़्त डेमो" : "Get My Free Demo Website"}
           </Button>
           <p className="mt-3 text-sm text-muted-foreground">
-            No payment. No obligation. Free demo first.
+            {isHindi
+              ? "कोई भुगतान नहीं। कोई दबाव नहीं। पहले मुफ़्त डेमो।"
+              : "No payment. No obligation. Free demo first."}
           </p>
         </div>
       </div>
@@ -4889,7 +5718,7 @@ function BeforeAfterSection() {
 /* ═══════════════════════════════════════════════════════════
    PART 10 — TESTIMONIALS PLACEHOLDER
 ═══════════════════════════════════════════════════════════ */
-function Testimonials() {
+function Testimonials({ isHindi }: { isHindi: boolean }) {
   const slots = [1, 2, 3];
 
   return (
@@ -4902,13 +5731,23 @@ function Testimonials() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-14">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Client Reviews
+            {isHindi ? "ग्राहकों की राय" : "Client Reviews"}
           </p>
           <h2
             id="testimonials-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            What Our <span className="text-gradient-indigo">Clients Say</span>
+            {isHindi ? (
+              <>
+                हमारे ग्राहक{" "}
+                <span className="text-gradient-indigo">क्या कहते हैं</span>
+              </>
+            ) : (
+              <>
+                What Our{" "}
+                <span className="text-gradient-indigo">Clients Say</span>
+              </>
+            )}
           </h2>
         </div>
 
@@ -4922,12 +5761,14 @@ function Testimonials() {
           </div>
           <div className="flex-1">
             <p className="font-display font-bold text-base text-foreground mb-1">
-              Client reviews coming soon.
+              {isHindi
+                ? "ग्राहकों की समीक्षाएं जल्द आएंगी।"
+                : "Client reviews coming soon."}
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              We're just getting started. Request a free demo today and be one
-              of our first featured clients. We'll showcase your success story
-              right here.
+              {isHindi
+                ? "डेमो मांगें और हमारे पहले फ़ीचर्ड क्लाइंट बनें। आपकी सफलता की कहानी यहाँ दिखाएंगे।"
+                : "We're just getting started. Request a free demo today and be one of our first featured clients. We'll showcase your success story right here."}
             </p>
           </div>
           <Button
@@ -4935,7 +5776,7 @@ function Testimonials() {
             data-ocid="testimonials.primary_button"
             className="flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-full px-5 h-10 shadow-md shadow-primary/15 transition-all hover:scale-105 text-sm whitespace-nowrap"
           >
-            Request Free Demo
+            {isHindi ? "डेमो मांगें" : "Request Free Demo"}
           </Button>
         </div>
 
@@ -5028,7 +5869,7 @@ const AUDIT_CHECKLIST = [
   { label: "Gallery / Photos", icon: Sparkles },
 ] as const;
 
-function FreeAuditForm() {
+function FreeAuditForm({ isHindi }: { isHindi: boolean }) {
   const { actor } = useActor();
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
@@ -5084,10 +5925,12 @@ function FreeAuditForm() {
               </div>
               <div>
                 <h3 className="font-display font-bold text-xl text-foreground">
-                  Audit request received!
+                  {isHindi ? "ऑडिट अनुरोध मिल गया!" : "Audit request received!"}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  We'll review your site and WhatsApp you within 24–48 hours.
+                  {isHindi
+                    ? "हम 24–48 घंटों में आपकी वेबसाइट की जांच करेंगे।"
+                    : "We'll review your site and WhatsApp you within 24–48 hours."}
                 </p>
               </div>
             </div>
@@ -5161,18 +6004,28 @@ function FreeAuditForm() {
         {/* Section header */}
         <div className="text-center mb-10">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Free Audit
+            {isHindi ? "मुफ़्त ऑडिट" : "Free Audit"}
           </p>
           <h2
             id="audit-heading"
             className="font-display font-bold text-3xl sm:text-4xl text-foreground leading-tight mb-4"
           >
-            Get a{" "}
-            <span className="text-gradient-indigo">Free Website Audit</span>
+            {isHindi ? (
+              <>
+                अपनी मौजूदा वेबसाइट का{" "}
+                <span className="text-gradient-indigo">मुफ़्त ऑडिट पाएं</span>
+              </>
+            ) : (
+              <>
+                Get a{" "}
+                <span className="text-gradient-indigo">Free Website Audit</span>
+              </>
+            )}
           </h2>
           <p className="text-base text-muted-foreground max-w-lg mx-auto">
-            We'll review your existing website or Google Maps listing and give
-            you honest feedback — completely free.
+            {isHindi
+              ? "अपना वेबसाइट URL या गूगल मैप्स लिंक डालें। हम आपको बताएंगे कि क्या सुधारा जा सकता है।"
+              : "We'll review your existing website or Google Maps listing and give you honest feedback — completely free."}
           </p>
         </div>
 
@@ -5189,7 +6042,9 @@ function FreeAuditForm() {
                 htmlFor="audit-url"
                 className="font-semibold text-sm text-foreground"
               >
-                Website URL or Google Maps Link{" "}
+                {isHindi
+                  ? "वेबसाइट URL या गूगल मैप्स लिंक"
+                  : "Website URL or Google Maps Link"}{" "}
                 <span className="text-destructive">*</span>
               </Label>
               <Input
@@ -5205,8 +6060,9 @@ function FreeAuditForm() {
                 autoComplete="url"
               />
               <p className="text-xs text-muted-foreground">
-                Don't have a website? Paste your Google Maps business link
-                instead.
+                {isHindi
+                  ? "वेबसाइट नहीं है? अपना गूगल मैप्स बिज़नेस लिंक डालें।"
+                  : "Don't have a website? Paste your Google Maps business link instead."}
               </p>
             </div>
 
@@ -5216,9 +6072,9 @@ function FreeAuditForm() {
                 htmlFor="audit-name"
                 className="font-semibold text-sm text-foreground"
               >
-                Your Name{" "}
+                {isHindi ? "आपका नाम" : "Your Name"}{" "}
                 <span className="text-muted-foreground font-normal">
-                  (optional)
+                  {isHindi ? "(वैकल्पिक)" : "(optional)"}
                 </span>
               </Label>
               <Input
@@ -5240,9 +6096,9 @@ function FreeAuditForm() {
                 htmlFor="audit-phone"
                 className="font-semibold text-sm text-foreground"
               >
-                Phone Number{" "}
+                {isHindi ? "फ़ोन नंबर" : "Phone Number"}{" "}
                 <span className="text-muted-foreground font-normal">
-                  (optional)
+                  {isHindi ? "(वैकल्पिक)" : "(optional)"}
                 </span>
               </Label>
               <Input
@@ -5284,18 +6140,22 @@ function FreeAuditForm() {
                     className="w-5 h-5 animate-spin mr-2"
                     data-ocid="audit.loading_state"
                   />
-                  Submitting your request...
+                  {isHindi
+                    ? "अनुरोध भेजा जा रहा है..."
+                    : "Submitting your request..."}
                 </>
               ) : (
                 <>
                   <Search className="w-5 h-5 mr-2" />
-                  Get My Free Audit
+                  {isHindi ? "मुफ़्त ऑडिट मांगें" : "Get My Free Audit"}
                 </>
               )}
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              100% free. No payment. No obligation. Results within 24–48 hours.
+              {isHindi
+                ? "100% मुफ़्त। कोई भुगतान नहीं। कोई दबाव नहीं। 24–48 घंटों में परिणाम।"
+                : "100% free. No payment. No obligation. Results within 24–48 hours."}
             </p>
           </form>
 
@@ -5402,8 +6262,8 @@ const FAQ_ITEMS: FAQItem[] = [
   },
 ];
 
-function FAQSection() {
-  const [isHindi, setIsHindi] = useState(false);
+function FAQSection({ isHindi: globalIsHindi }: { isHindi: boolean }) {
+  const [isHindi, setIsHindi] = useState(globalIsHindi);
 
   return (
     <section
@@ -5489,7 +6349,7 @@ function FAQSection() {
 /* ═══════════════════════════════════════════════════════════
    PART 11 — CONTACT SECTION
 ═══════════════════════════════════════════════════════════ */
-function ContactSection() {
+function ContactSection({ isHindi }: { isHindi: boolean }) {
   const { actor } = useActor();
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -5567,16 +6427,27 @@ function ContactSection() {
         {/* Section header */}
         <div className="text-center mb-12 md:mb-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary/70 mb-3">
-            Contact Us
+            {isHindi ? "संपर्क करें" : "Contact Us"}
           </p>
           <h2
             id="contact-heading"
             className="font-display font-bold text-3xl sm:text-4xl md:text-[2.75rem] text-foreground leading-tight mb-4"
           >
-            Get In <span className="text-gradient-indigo">Touch</span>
+            {isHindi ? (
+              <>
+                बात करें —{" "}
+                <span className="text-gradient-indigo">WhatsApp या फ़ोन पर</span>
+              </>
+            ) : (
+              <>
+                Get In <span className="text-gradient-indigo">Touch</span>
+              </>
+            )}
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto">
-            Have a question or ready to start? We'd love to hear from you.
+            {isHindi
+              ? "कोई सवाल है या शुरू करना चाहते हैं? हम आपसे बात करना चाहते हैं।"
+              : "Have a question or ready to start? We'd love to hear from you."}
           </p>
         </div>
 
@@ -5637,7 +6508,7 @@ function ContactSection() {
               className="mt-2 inline-flex items-center justify-center gap-2.5 bg-green-600 hover:bg-green-500 text-white font-bold px-7 h-14 rounded-full shadow-xl shadow-green-200 transition-all hover:scale-105 text-base"
             >
               <MessageCircle className="w-5 h-5" />
-              Chat on WhatsApp Now
+              {isHindi ? "अभी व्हाट्सएप करें" : "Chat on WhatsApp Now"}
             </a>
             <p className="text-xs text-muted-foreground text-center">
               Quickest response via WhatsApp · Usually replies within 1 hour
@@ -5680,7 +6551,7 @@ function ContactSection() {
             ) : (
               <div className="bg-white rounded-3xl border border-border shadow-xl shadow-primary/5 p-7 md:p-9">
                 <h3 className="font-display font-bold text-lg text-foreground mb-5">
-                  Send a Message
+                  {isHindi ? "संदेश भेजें" : "Send a Message"}
                 </h3>
                 <form
                   onSubmit={handleSubmit}
@@ -5693,7 +6564,8 @@ function ContactSection() {
                       htmlFor="contact-name"
                       className="font-semibold text-sm text-foreground"
                     >
-                      Your Name <span className="text-destructive">*</span>
+                      {isHindi ? "आपका नाम" : "Your Name"}{" "}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="contact-name"
@@ -5715,7 +6587,8 @@ function ContactSection() {
                       htmlFor="contact-email"
                       className="font-semibold text-sm text-foreground"
                     >
-                      Email Address <span className="text-destructive">*</span>
+                      {isHindi ? "ईमेल पता" : "Email Address"}{" "}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="contact-email"
@@ -5737,11 +6610,16 @@ function ContactSection() {
                       htmlFor="contact-message"
                       className="font-semibold text-sm text-foreground"
                     >
-                      Message <span className="text-destructive">*</span>
+                      {isHindi ? "संदेश" : "Message"}{" "}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Textarea
                       id="contact-message"
-                      placeholder="Tell us about your business or ask a question..."
+                      placeholder={
+                        isHindi
+                          ? "अपने बिज़नेस के बारे में बताएं..."
+                          : "Tell us about your business or ask a question..."
+                      }
                       value={contactMessage}
                       onChange={(e) => setContactMessage(e.target.value)}
                       required
@@ -5778,12 +6656,12 @@ function ContactSection() {
                           className="w-5 h-5 animate-spin mr-2"
                           data-ocid="contact.loading_state"
                         />
-                        Sending...
+                        {isHindi ? "भेजा जा रहा है..." : "Sending..."}
                       </>
                     ) : (
                       <>
                         <Send className="w-5 h-5 mr-2" />
-                        Send Message
+                        {isHindi ? "संदेश भेजें" : "Send Message"}
                       </>
                     )}
                   </Button>
@@ -5798,10 +6676,101 @@ function ContactSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   FINAL CTA BANNER
+═══════════════════════════════════════════════════════════ */
+function FinalCTABanner({ isHindi }: { isHindi: boolean }) {
+  return (
+    <section
+      className="py-16 md:py-20 relative overflow-hidden"
+      aria-labelledby="final-cta-heading"
+    >
+      {/* Background gradient */}
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-primary via-indigo-600 to-teal"
+        aria-hidden="true"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 opacity-10"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 30% 70%, white 1px, transparent 1px), radial-gradient(circle at 70% 30%, white 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+        }}
+      />
+      <div
+        className="absolute -top-20 -left-20 w-72 h-72 rounded-full bg-white/5 blur-3xl"
+        aria-hidden="true"
+      />
+      <div
+        className="absolute -bottom-12 -right-16 w-60 h-60 rounded-full bg-white/8 blur-3xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
+        <h2
+          id="final-cta-heading"
+          className="text-3xl sm:text-4xl md:text-5xl font-display font-bold text-white leading-tight mb-5"
+        >
+          {isHindi ? (
+            <>
+              क्या आप अपना बिज़नेस{" "}
+              <span className="text-yellow-300">ऑनलाइन बढ़ाना चाहते हैं?</span>
+            </>
+          ) : (
+            <>
+              Ready to Grow Your{" "}
+              <span className="text-yellow-300">Business Online?</span>
+            </>
+          )}
+        </h2>
+
+        <p className="text-lg md:text-xl text-white/85 mb-10 max-w-2xl mx-auto leading-relaxed">
+          {isHindi
+            ? "आज ही एक मुफ़्त प्रीव्यू वेबसाइट मांगें। कोई भुगतान नहीं, कोई दबाव नहीं।"
+            : "Get a free preview website today. No payment. No obligation. Just a real preview of your future site."}
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            size="lg"
+            onClick={() => scrollTo("demo-form")}
+            data-ocid="final-cta.primary_button"
+            className="bg-white text-primary hover:bg-indigo-50 font-bold px-10 h-14 rounded-full shadow-xl transition-all hover:scale-105 text-base w-full sm:w-auto"
+          >
+            {isHindi ? "मुफ़्त डेमो वेबसाइट पाएं" : "Get My Free Demo Website"}
+          </Button>
+          <a
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-ocid="final-cta.secondary_button"
+            className="inline-flex items-center justify-center gap-2.5 bg-green-500 hover:bg-green-400 text-white font-bold px-8 h-14 rounded-full shadow-xl transition-all hover:scale-105 text-base w-full sm:w-auto"
+          >
+            <MessageCircle className="w-5 h-5" />
+            {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
+          </a>
+        </div>
+
+        <p className="mt-6 text-white/60 text-sm">
+          {isHindi
+            ? "मुफ़्त डेमो · कोई भुगतान नहीं · कोई दबाव नहीं"
+            : "Free demo · No payment · No obligation"}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    APP ROOT
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
+  const [isHindi, setIsHindi] = useState(false);
   const [currentHash, setCurrentHash] = useState(() => window.location.hash);
+  const [urgencyVisible, setUrgencyVisible] = useState(
+    () => sessionStorage.getItem("lb_urgency_dismissed") !== "1",
+  );
 
   useEffect(() => {
     function onHashChange() {
@@ -5887,55 +6856,79 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Nav />
-      <main className="flex-1">
+      {/* Skip to main content link for accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[9999] focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded-lg focus:font-semibold"
+      >
+        Skip to main content
+      </a>
+      {/* Urgency/scarcity banner */}
+      {urgencyVisible && (
+        <UrgencyBanner
+          isHindi={isHindi}
+          onDismiss={() => {
+            sessionStorage.setItem("lb_urgency_dismissed", "1");
+            setUrgencyVisible(false);
+          }}
+        />
+      )}
+      <Nav isHindi={isHindi} setIsHindi={setIsHindi} />
+      <main id="main-content" className="flex-1">
         {/* 1 — Hero */}
-        <Hero />
+        <Hero isHindi={isHindi} />
 
         {/* 2 — About */}
-        <About />
+        <About isHindi={isHindi} />
 
         {/* 3 — Services */}
-        <Services />
+        <Services isHindi={isHindi} />
 
         {/* 4 — Why Choose Us */}
-        <WhyChooseUs />
+        <WhyChooseUs isHindi={isHindi} />
+
+        {/* 4b — Comparison Table */}
+        <ComparisonTable isHindi={isHindi} />
 
         {/* 5 — Portfolio */}
-        <Portfolio />
+        <Portfolio isHindi={isHindi} />
 
         {/* 6 — Free Demo Banner */}
-        <FreeDemoBanner />
+        <FreeDemoBanner isHindi={isHindi} />
 
         {/* 7 — AI Helper */}
-        <AIHelper />
+        <AIHelper isHindi={isHindi} />
 
         {/* 8 — Cost Calculator */}
-        <CostCalculator />
+        <CostCalculator isHindi={isHindi} />
 
         {/* 9 — Demo Request Form */}
-        <DemoRequestForm />
+        <DemoRequestForm isHindi={isHindi} />
 
         {/* 10 — Pricing */}
-        <Pricing />
+        <Pricing isHindi={isHindi} />
 
         {/* 11 — Before vs After */}
-        <BeforeAfterSection />
+        <BeforeAfterSection isHindi={isHindi} />
 
         {/* 12 — Testimonials */}
-        <Testimonials />
+        <Testimonials isHindi={isHindi} />
 
         {/* 13 — Free Audit Form */}
-        <FreeAuditForm />
+        <FreeAuditForm isHindi={isHindi} />
 
         {/* 14 — FAQ */}
-        <FAQSection />
+        <FAQSection isHindi={isHindi} />
 
         {/* 15 — Contact */}
-        <ContactSection />
+        <ContactSection isHindi={isHindi} />
       </main>
-      <Footer />
+      {/* Final CTA Banner before footer */}
+      <FinalCTABanner isHindi={isHindi} />
+      <Footer isHindi={isHindi} />
       <WhatsAppFloat />
+      {/* Exit-intent popup */}
+      <ExitIntentPopup isHindi={isHindi} />
     </div>
   );
 }
