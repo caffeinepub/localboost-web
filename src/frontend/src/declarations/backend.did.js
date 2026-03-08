@@ -40,28 +40,101 @@ export const DemoRequest = IDL.Record({
   'previewSlug' : IDL.Text,
   'phoneNumber' : IDL.Text,
 });
+export const PaymentOrder = IDL.Record({
+  'id' : IDL.Text,
+  'status' : IDL.Text,
+  'clientName' : IDL.Text,
+  'appLink' : IDL.Text,
+  'createdAt' : Time,
+  'clientPhone' : IDL.Text,
+  'utrNumber' : IDL.Text,
+  'amount' : IDL.Nat,
+  'planName' : IDL.Text,
+});
+export const PortfolioItem = IDL.Record({
+  'id' : IDL.Text,
+  'status' : IDL.Text,
+  'title' : IDL.Text,
+  'thumbnailUrl' : IDL.Text,
+  'createdAt' : Time,
+  'businessType' : IDL.Text,
+  'description' : IDL.Text,
+  'liveUrl' : IDL.Text,
+  'pages' : IDL.Vec(IDL.Text),
+});
+export const Testimonial = IDL.Record({
+  'id' : IDL.Text,
+  'status' : IDL.Text,
+  'name' : IDL.Text,
+  'createdAt' : Time,
+  'text' : IDL.Text,
+  'businessType' : IDL.Text,
+  'photoUrl' : IDL.Opt(IDL.Text),
+  'rating' : IDL.Nat,
+});
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const PaymentOrderStatus = IDL.Record({
+  'id' : IDL.Text,
+  'status' : IDL.Text,
+  'appLink' : IDL.Text,
+  'createdAt' : Time,
+  'amount' : IDL.Nat,
+  'planName' : IDL.Text,
+});
 export const SiteSettings = IDL.Record({
+  'googleReviewCount' : IDL.Text,
+  'googleRating' : IDL.Text,
   'basicPrice' : IDL.Nat,
   'analyticsId' : IDL.Text,
+  'googleBusinessUrl' : IDL.Text,
   'workingHours' : IDL.Text,
   'heroSubheadline' : IDL.Text,
   'businessPrice' : IDL.Nat,
   'heroHeadline' : IDL.Text,
   'advancedPrice' : IDL.Nat,
 });
+export const UpiSettings = IDL.Record({
+  'upiName' : IDL.Text,
+  'upiId' : IDL.Text,
+  'paymentsEnabled' : IDL.Bool,
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'addPortfolioItem' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+      ],
+      [IDL.Text],
+      [],
+    ),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'deletePortfolioItem' : IDL.Func([IDL.Text], [], []),
   'extendPreviewExpiry' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'getAllAuditRequests' : IDL.Func([], [IDL.Vec(AuditRequest)], ['query']),
   'getAllContactMessages' : IDL.Func([], [IDL.Vec(ContactMessage)], ['query']),
   'getAllDemoRequests' : IDL.Func([], [IDL.Vec(DemoRequest)], ['query']),
+  'getAllPaymentOrders' : IDL.Func([], [IDL.Vec(PaymentOrder)], ['query']),
+  'getAllPortfolioItems' : IDL.Func([], [IDL.Vec(PortfolioItem)], ['query']),
+  'getAllTestimonials' : IDL.Func([], [IDL.Vec(Testimonial)], ['query']),
+  'getApprovedTestimonials' : IDL.Func([], [IDL.Vec(Testimonial)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getPaymentOrderStatus' : IDL.Func(
+      [IDL.Text],
+      [IDL.Opt(PaymentOrderStatus)],
+      ['query'],
+    ),
   'getPreviewBySlug' : IDL.Func([IDL.Text], [IDL.Opt(DemoRequest)], ['query']),
+  'getPublicPortfolioItems' : IDL.Func([], [IDL.Vec(PortfolioItem)], ['query']),
   'getSiteSettings' : IDL.Func([], [SiteSettings], ['query']),
+  'getUpiSettings' : IDL.Func([], [UpiSettings], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
@@ -80,8 +153,35 @@ export const idlService = IDL.Service({
       [IDL.Text],
       [],
     ),
+  'submitPaymentOrder' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+      [IDL.Text],
+      [],
+    ),
+  'submitTestimonial' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
+      [],
+      [],
+    ),
   'updateDemoRequestStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'updatePaymentOrderStatus' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
+  'updatePortfolioItem' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+      ],
+      [],
+      [],
+    ),
   'updateSiteSettings' : IDL.Func([SiteSettings], [], []),
+  'updateTestimonialStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'updateUpiSettings' : IDL.Func([UpiSettings], [], []),
 });
 
 export const idlInitArgs = [];
@@ -119,20 +219,82 @@ export const idlFactory = ({ IDL }) => {
     'previewSlug' : IDL.Text,
     'phoneNumber' : IDL.Text,
   });
+  const PaymentOrder = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'clientName' : IDL.Text,
+    'appLink' : IDL.Text,
+    'createdAt' : Time,
+    'clientPhone' : IDL.Text,
+    'utrNumber' : IDL.Text,
+    'amount' : IDL.Nat,
+    'planName' : IDL.Text,
+  });
+  const PortfolioItem = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'title' : IDL.Text,
+    'thumbnailUrl' : IDL.Text,
+    'createdAt' : Time,
+    'businessType' : IDL.Text,
+    'description' : IDL.Text,
+    'liveUrl' : IDL.Text,
+    'pages' : IDL.Vec(IDL.Text),
+  });
+  const Testimonial = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'text' : IDL.Text,
+    'businessType' : IDL.Text,
+    'photoUrl' : IDL.Opt(IDL.Text),
+    'rating' : IDL.Nat,
+  });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const PaymentOrderStatus = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'appLink' : IDL.Text,
+    'createdAt' : Time,
+    'amount' : IDL.Nat,
+    'planName' : IDL.Text,
+  });
   const SiteSettings = IDL.Record({
+    'googleReviewCount' : IDL.Text,
+    'googleRating' : IDL.Text,
     'basicPrice' : IDL.Nat,
     'analyticsId' : IDL.Text,
+    'googleBusinessUrl' : IDL.Text,
     'workingHours' : IDL.Text,
     'heroSubheadline' : IDL.Text,
     'businessPrice' : IDL.Nat,
     'heroHeadline' : IDL.Text,
     'advancedPrice' : IDL.Nat,
   });
+  const UpiSettings = IDL.Record({
+    'upiName' : IDL.Text,
+    'upiId' : IDL.Text,
+    'paymentsEnabled' : IDL.Bool,
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'addPortfolioItem' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+        ],
+        [IDL.Text],
+        [],
+      ),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'deletePortfolioItem' : IDL.Func([IDL.Text], [], []),
     'extendPreviewExpiry' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'getAllAuditRequests' : IDL.Func([], [IDL.Vec(AuditRequest)], ['query']),
     'getAllContactMessages' : IDL.Func(
@@ -141,14 +303,29 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getAllDemoRequests' : IDL.Func([], [IDL.Vec(DemoRequest)], ['query']),
+    'getAllPaymentOrders' : IDL.Func([], [IDL.Vec(PaymentOrder)], ['query']),
+    'getAllPortfolioItems' : IDL.Func([], [IDL.Vec(PortfolioItem)], ['query']),
+    'getAllTestimonials' : IDL.Func([], [IDL.Vec(Testimonial)], ['query']),
+    'getApprovedTestimonials' : IDL.Func([], [IDL.Vec(Testimonial)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getPaymentOrderStatus' : IDL.Func(
+        [IDL.Text],
+        [IDL.Opt(PaymentOrderStatus)],
+        ['query'],
+      ),
     'getPreviewBySlug' : IDL.Func(
         [IDL.Text],
         [IDL.Opt(DemoRequest)],
         ['query'],
       ),
+    'getPublicPortfolioItems' : IDL.Func(
+        [],
+        [IDL.Vec(PortfolioItem)],
+        ['query'],
+      ),
     'getSiteSettings' : IDL.Func([], [SiteSettings], ['query']),
+    'getUpiSettings' : IDL.Func([], [UpiSettings], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
@@ -167,8 +344,39 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Text],
         [],
       ),
+    'submitPaymentOrder' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+        [IDL.Text],
+        [],
+      ),
+    'submitTestimonial' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
+        [],
+        [],
+      ),
     'updateDemoRequestStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'updatePaymentOrderStatus' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
+    'updatePortfolioItem' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+        ],
+        [],
+        [],
+      ),
     'updateSiteSettings' : IDL.Func([SiteSettings], [], []),
+    'updateTestimonialStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'updateUpiSettings' : IDL.Func([UpiSettings], [], []),
   });
 };
 

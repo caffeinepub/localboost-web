@@ -36,31 +36,91 @@ export interface DemoRequest {
   'previewSlug' : string,
   'phoneNumber' : string,
 }
+export interface PaymentOrder {
+  'id' : string,
+  'status' : string,
+  'clientName' : string,
+  'appLink' : string,
+  'createdAt' : Time,
+  'clientPhone' : string,
+  'utrNumber' : string,
+  'amount' : bigint,
+  'planName' : string,
+}
+export interface PaymentOrderStatus {
+  'id' : string,
+  'status' : string,
+  'appLink' : string,
+  'createdAt' : Time,
+  'amount' : bigint,
+  'planName' : string,
+}
+export interface PortfolioItem {
+  'id' : string,
+  'status' : string,
+  'title' : string,
+  'thumbnailUrl' : string,
+  'createdAt' : Time,
+  'businessType' : string,
+  'description' : string,
+  'liveUrl' : string,
+  'pages' : Array<string>,
+}
 export interface SiteSettings {
+  'googleReviewCount' : string,
+  'googleRating' : string,
   'basicPrice' : bigint,
   'analyticsId' : string,
+  'googleBusinessUrl' : string,
   'workingHours' : string,
   'heroSubheadline' : string,
   'businessPrice' : bigint,
   'heroHeadline' : string,
   'advancedPrice' : bigint,
 }
+export interface Testimonial {
+  'id' : string,
+  'status' : string,
+  'name' : string,
+  'createdAt' : Time,
+  'text' : string,
+  'businessType' : string,
+  'photoUrl' : [] | [string],
+  'rating' : bigint,
+}
 export type Time = bigint;
+export interface UpiSettings {
+  'upiName' : string,
+  'upiId' : string,
+  'paymentsEnabled' : boolean,
+}
 export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'addPortfolioItem' : ActorMethod<
+    [string, string, string, string, string, Array<string>, string],
+    string
+  >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'deletePortfolioItem' : ActorMethod<[string], undefined>,
   'extendPreviewExpiry' : ActorMethod<[string, bigint], undefined>,
   'getAllAuditRequests' : ActorMethod<[], Array<AuditRequest>>,
   'getAllContactMessages' : ActorMethod<[], Array<ContactMessage>>,
   'getAllDemoRequests' : ActorMethod<[], Array<DemoRequest>>,
+  'getAllPaymentOrders' : ActorMethod<[], Array<PaymentOrder>>,
+  'getAllPortfolioItems' : ActorMethod<[], Array<PortfolioItem>>,
+  'getAllTestimonials' : ActorMethod<[], Array<Testimonial>>,
+  'getApprovedTestimonials' : ActorMethod<[], Array<Testimonial>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getPaymentOrderStatus' : ActorMethod<[string], [] | [PaymentOrderStatus]>,
   'getPreviewBySlug' : ActorMethod<[string], [] | [DemoRequest]>,
+  'getPublicPortfolioItems' : ActorMethod<[], Array<PortfolioItem>>,
   'getSiteSettings' : ActorMethod<[], SiteSettings>,
+  'getUpiSettings' : ActorMethod<[], UpiSettings>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
@@ -73,8 +133,23 @@ export interface _SERVICE {
     [string, string, string, string, [] | [string]],
     string
   >,
+  'submitPaymentOrder' : ActorMethod<
+    [string, string, string, bigint, string],
+    string
+  >,
+  'submitTestimonial' : ActorMethod<
+    [string, string, bigint, string, [] | [string]],
+    undefined
+  >,
   'updateDemoRequestStatus' : ActorMethod<[string, string], undefined>,
+  'updatePaymentOrderStatus' : ActorMethod<[string, string, string], undefined>,
+  'updatePortfolioItem' : ActorMethod<
+    [string, string, string, string, string, string, Array<string>, string],
+    undefined
+  >,
   'updateSiteSettings' : ActorMethod<[SiteSettings], undefined>,
+  'updateTestimonialStatus' : ActorMethod<[string, string], undefined>,
+  'updateUpiSettings' : ActorMethod<[UpiSettings], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

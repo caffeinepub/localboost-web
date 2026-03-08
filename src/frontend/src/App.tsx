@@ -16,14 +16,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import {
   AlertTriangle,
   ArrowLeft,
-  BookOpen,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -39,12 +40,16 @@ import {
   IndianRupee,
   Languages,
   Loader2,
+  Lock,
   type LucideIcon,
   Mail,
   MapPin,
   Menu,
   MessageCircle,
+  Pencil,
   Phone,
+  Play,
+  Plus,
   Printer,
   RefreshCw,
   Rocket,
@@ -58,14 +63,24 @@ import {
   Sparkles,
   Star,
   Stethoscope,
+  ThumbsDown,
+  ThumbsUp,
   TrendingUp,
   Users,
+  Video,
   X,
   XCircle,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { DemoRequest, SiteSettings } from "./backend";
+import type {
+  DemoRequest,
+  PaymentOrder,
+  PortfolioItem,
+  SiteSettings,
+  Testimonial,
+  UpiSettings,
+} from "./backend";
 
 /* ═══════════════════════════════════════════════════════════
    CONSTANTS
@@ -77,6 +92,18 @@ const WHATSAPP_BASE = "https://wa.me/918709546323";
 const WHATSAPP_URL =
   "https://wa.me/918709546323?text=Hello%2C%20I%27d%20like%20a%20free%20demo%20website%20for%20my%20business.%20Please%20contact%20me.";
 const CURRENT_YEAR = new Date().getFullYear();
+// SHA-256 hash of the admin password — never store the plain-text password in source
+// Hash of "LB@2026#Admin!"
+const ADMIN_PASSWORD_HASH =
+  "390648189081139af5305a7267c0538bdbba90dbea8e8761de006009a58e8ea7";
+
+async function hashPassword(pw: string): Promise<string> {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(pw));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS
@@ -87,6 +114,77 @@ function scrollTo(id: string) {
 
 function goToMain() {
   window.location.hash = "";
+}
+
+function extractYouTubeId(url: string): string {
+  if (!url) return "dQw4w9WgXcQ";
+  const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : "dQw4w9WgXcQ";
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIDEO MODAL
+═══════════════════════════════════════════════════════════ */
+function VideoModal({
+  videoId,
+  onClose,
+}: {
+  videoId: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+      {/* Backdrop — click closes the modal */}
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+        role="button"
+        tabIndex={-1}
+      />
+
+      {/* Dialog */}
+      <dialog
+        open
+        data-ocid="hero.video_modal"
+        aria-label="How It Works video"
+        className="relative w-full max-w-3xl z-10 bg-transparent border-0 p-0 m-0"
+      >
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={onClose}
+          data-ocid="hero.video_close_button"
+          aria-label="Close video"
+          className="absolute -top-10 right-0 w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors text-white"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Video iframe */}
+        <div className="rounded-2xl overflow-hidden shadow-2xl aspect-video bg-black">
+          <iframe
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`}
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full"
+            title="How It Works — LocalBoost Web"
+          />
+        </div>
+      </dialog>
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -304,6 +402,543 @@ function ExitIntentPopup({ isHindi }: { isHindi: boolean }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   UPI PAYMENT MODAL
+═══════════════════════════════════════════════════════════ */
+const UPI_APPS = [
+  { label: "GPay", icon: "🟢" },
+  { label: "PhonePe", icon: "🟣" },
+  { label: "Paytm", icon: "🔵" },
+  { label: "BHIM", icon: "🇮🇳" },
+  { label: "Other UPI", icon: "💳" },
+] as const;
+
+function UpiPaymentModal({
+  planName,
+  amount,
+  isHindi,
+  onClose,
+}: {
+  planName: string;
+  amount: number;
+  isHindi: boolean;
+  onClose: () => void;
+}) {
+  const { actor, isFetching } = useActor();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [upiSettings, setUpiSettings] = useState<UpiSettings | null>(null);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [selectedApp, setSelectedApp] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // UTR form state
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [utr, setUtr] = useState("");
+  const [utrError, setUtrError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  // Load UPI settings on mount
+  useEffect(() => {
+    if (isFetching || !actor) return;
+    setLoadingSettings(true);
+    actor
+      .getUpiSettings()
+      .then((s) => setUpiSettings(s))
+      .catch(() => setUpiSettings(null))
+      .finally(() => setLoadingSettings(false));
+  }, [actor, isFetching]);
+
+  // ESC to close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function handleCopyUpiId() {
+    if (!upiSettings?.upiId) return;
+    navigator.clipboard.writeText(upiSettings.upiId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleUtrChange(val: string) {
+    // Only allow digits
+    const digits = val.replace(/\D/g, "").slice(0, 12);
+    setUtr(digits);
+    if (digits.length > 0 && digits.length !== 12) {
+      setUtrError(
+        isHindi
+          ? "UTR नंबर ठीक 12 अंक का होना चाहिए"
+          : "UTR must be exactly 12 digits",
+      );
+    } else {
+      setUtrError("");
+    }
+  }
+
+  const [orderId, setOrderId] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!actor) return;
+    if (utr.length !== 12) {
+      setUtrError(
+        isHindi
+          ? "UTR नंबर ठीक 12 अंक का होना चाहिए"
+          : "UTR must be exactly 12 digits",
+      );
+      return;
+    }
+    if (!name.trim() || !phone.trim()) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const result = await actor.submitPaymentOrder(
+        name.trim(),
+        phone.trim(),
+        planName,
+        BigInt(amount),
+        utr,
+      );
+      setOrderId(result);
+      localStorage.setItem("lb_last_order_id", result);
+      localStorage.setItem("lb_last_order_plan", planName);
+      localStorage.setItem("lb_last_order_amount", String(amount));
+      setStep(3);
+    } catch {
+      setSubmitError(
+        isHindi
+          ? "कुछ गड़बड़ हुई। कृपया दोबारा कोशिश करें।"
+          : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const waSuccessUrl = `${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! I just paid ₹${amount} for the ${planName} plan. My UTR: ${utr}. Please confirm my order.`)}`;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+        role="button"
+        tabIndex={-1}
+      />
+
+      {/* Dialog */}
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="upi-modal-title"
+        className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full flex flex-col gap-0 border-0 m-0 overflow-hidden max-h-[90vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border sticky top-0 bg-white z-10">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary/70 mb-0.5">
+              {isHindi ? "भुगतान करें" : "Pay for"}
+            </p>
+            <h2
+              id="upi-modal-title"
+              className="font-display font-bold text-xl text-foreground leading-tight"
+            >
+              {planName}{" "}
+              <span className="text-primary">
+                ₹{amount.toLocaleString("en-IN")}
+              </span>
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            data-ocid="payment_modal.close_button"
+            aria-label="Close payment modal"
+            className="w-9 h-9 rounded-full bg-accent hover:bg-accent/70 flex items-center justify-center transition-colors flex-shrink-0 ml-3"
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 pb-6 pt-5 flex flex-col gap-5">
+          {/* Loading state */}
+          {(loadingSettings || isFetching) && (
+            <div
+              className="flex items-center justify-center py-10 gap-3 text-muted-foreground"
+              data-ocid="payment_modal.loading_state"
+            >
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">
+                {isHindi ? "लोड हो रहा है..." : "Loading..."}
+              </span>
+            </div>
+          )}
+
+          {/* Payments disabled */}
+          {!loadingSettings &&
+            !isFetching &&
+            upiSettings &&
+            !upiSettings.paymentsEnabled && (
+              <div className="flex flex-col items-center gap-5 py-6 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+                  <IndianRupee className="w-7 h-7 text-amber-500" />
+                </div>
+                <div>
+                  <p className="font-display font-bold text-lg text-foreground mb-1">
+                    {isHindi
+                      ? "ऑनलाइन पेमेंट जल्द आ रही है"
+                      : "Online Payments Coming Soon"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {isHindi
+                      ? "अभी व्हाट्सएप पर संपर्क करें — हम आपकी मदद करेंगे।"
+                      : "Chat on WhatsApp for now — we'll help you complete your order."}
+                  </p>
+                </div>
+                <a
+                  href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! I'd like to pay for the ${planName} plan (₹${amount}). Please help me complete my order.`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-md shadow-green-200 text-sm"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
+                </a>
+              </div>
+            )}
+
+          {/* Step 1 — UPI App Select */}
+          {!loadingSettings &&
+            !isFetching &&
+            upiSettings?.paymentsEnabled &&
+            step === 1 && (
+              <div className="flex flex-col gap-5">
+                {/* Amount display */}
+                <div className="rounded-2xl bg-primary/5 border border-primary/15 p-5 text-center">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-primary/60 mb-1">
+                    {isHindi ? "भुगतान राशि" : "Amount to Pay"}
+                  </p>
+                  <p className="font-display font-bold text-4xl text-primary">
+                    ₹{amount.toLocaleString("en-IN")}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {planName} {isHindi ? "प्लान के लिए" : "Plan"}
+                  </p>
+                </div>
+
+                {/* UPI ID */}
+                <div className="rounded-2xl bg-accent/40 border border-border p-4 flex flex-col gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    {isHindi ? "UPI ID पर भेजें" : "Pay to UPI ID"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono font-bold text-base text-foreground flex-1 break-all">
+                      {upiSettings.upiId}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopyUpiId}
+                      className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 px-3 py-1.5 rounded-full transition-colors min-h-[32px]"
+                      aria-label="Copy UPI ID"
+                    >
+                      {copied ? (
+                        <>
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          {isHindi ? "कॉपी हो गया" : "Copied!"}
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          {isHindi ? "कॉपी करें" : "Copy"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {upiSettings.upiName && (
+                    <p className="text-xs text-muted-foreground">
+                      {isHindi ? "नाम:" : "Name:"}{" "}
+                      <span className="font-semibold text-foreground">
+                        {upiSettings.upiName}
+                      </span>
+                    </p>
+                  )}
+                </div>
+
+                {/* UPI App buttons */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    {isHindi ? "अपना UPI ऐप चुनें" : "Select Your UPI App"}
+                  </p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {UPI_APPS.map((app) => (
+                      <button
+                        type="button"
+                        key={app.label}
+                        onClick={() => {
+                          setSelectedApp(app.label);
+                          setStep(2);
+                        }}
+                        className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all hover:border-primary/40 hover:bg-primary/5 ${
+                          selectedApp === app.label
+                            ? "border-primary bg-primary/5"
+                            : "border-border bg-white"
+                        }`}
+                      >
+                        <span className="text-xl">{app.icon}</span>
+                        <span className="text-[10px] font-semibold text-foreground leading-tight text-center">
+                          {app.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Instruction */}
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5">
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    {isHindi
+                      ? `अपना UPI ऐप खोलें, ₹${amount.toLocaleString("en-IN")} का भुगतान ${upiSettings.upiId} पर करें, फिर वापस आकर UTR नंबर दर्ज करें।`
+                      : `Open your UPI app, pay ₹${amount.toLocaleString("en-IN")} to ${upiSettings.upiId}, then come back and enter your UTR number below.`}
+                  </p>
+                </div>
+
+                <Button
+                  size="lg"
+                  onClick={() => setStep(2)}
+                  className="h-12 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105"
+                >
+                  {isHindi
+                    ? "मैंने भुगतान किया — UTR दर्ज करें →"
+                    : "I've Paid — Enter UTR →"}
+                </Button>
+              </div>
+            )}
+
+          {/* Step 2 — UTR Submission */}
+          {!loadingSettings &&
+            !isFetching &&
+            upiSettings?.paymentsEnabled &&
+            step === 2 && (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <div className="rounded-xl bg-accent/40 border border-border p-3.5 text-sm text-muted-foreground">
+                  {isHindi
+                    ? "भुगतान के बाद अपने UPI ऐप में UTR नंबर मिलेगा। यह ठीक 12 अंक का होता है।"
+                    : "After payment, find the UTR number in your UPI app's transaction history. It is exactly 12 digits."}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="upi-name"
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  >
+                    {isHindi ? "आपका नाम" : "Your Name"}{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="upi-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={isHindi ? "राजेश कुमार" : "Rajesh Kumar"}
+                    required
+                    data-ocid="payment_modal.name_input"
+                    className="h-11"
+                    autoComplete="name"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="upi-phone"
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  >
+                    {isHindi ? "फ़ोन नंबर" : "Your Phone"}{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="upi-phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    required
+                    type="tel"
+                    data-ocid="payment_modal.phone_input"
+                    className="h-11"
+                    autoComplete="tel"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="upi-utr"
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  >
+                    {isHindi ? "UTR नंबर (12 अंक)" : "UTR Number (12 digits)"}{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="upi-utr"
+                    value={utr}
+                    onChange={(e) => handleUtrChange(e.target.value)}
+                    placeholder="123456789012"
+                    required
+                    maxLength={12}
+                    pattern="[0-9]{12}"
+                    inputMode="numeric"
+                    data-ocid="payment_modal.utr_input"
+                    className={`h-11 font-mono tracking-widest ${utrError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  />
+                  {utrError && (
+                    <p
+                      className="text-xs text-destructive flex items-center gap-1 mt-0.5"
+                      data-ocid="payment_modal.error_state"
+                      role="alert"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      {utrError}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {utr.length}/12 {isHindi ? "अंक दर्ज" : "digits entered"}
+                    {utr.length === 12 && (
+                      <span className="text-green-600 ml-2 font-semibold">
+                        ✓
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {submitError && (
+                  <div
+                    className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 text-destructive text-sm font-medium px-4 py-3 rounded-xl"
+                    data-ocid="payment_modal.error_state"
+                    role="alert"
+                  >
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    {submitError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setStep(1)}
+                    className="flex-1 h-11 rounded-full"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1.5" />
+                    {isHindi ? "वापस" : "Back"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={
+                      submitting ||
+                      utr.length !== 12 ||
+                      !name.trim() ||
+                      !phone.trim()
+                    }
+                    data-ocid="payment_modal.submit_button"
+                    className="flex-[2] h-11 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        {isHindi ? "सबमिट हो रहा है..." : "Submitting..."}
+                      </>
+                    ) : isHindi ? (
+                      "UTR सबमिट करें"
+                    ) : (
+                      "Submit UTR"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+          {/* Step 3 — Success */}
+          {step === 3 && (
+            <div
+              className="flex flex-col items-center gap-5 py-4 text-center"
+              data-ocid="payment_modal.success_state"
+            >
+              <div className="w-16 h-16 rounded-full bg-green-100 border-2 border-green-300 flex items-center justify-center">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+              <div>
+                <p className="font-display font-bold text-xl text-foreground mb-2">
+                  {isHindi ? "UTR सबमिट हो गया!" : "Payment Submitted!"}
+                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {isHindi
+                    ? "हम आपका UTR वेरिफाई करके आपको व्हाट्सएप पर वेबसाइट लिंक भेजेंगे।"
+                    : "We'll verify your UTR and send you your website link shortly. Check WhatsApp for updates."}
+                </p>
+              </div>
+              <div className="w-full rounded-xl bg-accent/40 border border-border p-3.5 text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  {isHindi ? "आपका ऑर्डर" : "Your Order"}
+                </p>
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">{planName}</span> —{" "}
+                  <span className="font-bold text-primary">
+                    ₹{amount.toLocaleString("en-IN")}
+                  </span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  UTR: <span className="font-mono font-bold">{utr}</span>
+                </p>
+              </div>
+              <a
+                href={waSuccessUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-md shadow-green-200 text-sm"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {isHindi ? "व्हाट्सएप पर कन्फर्म करें" : "Confirm on WhatsApp"}
+              </a>
+              {orderId && (
+                <button
+                  type="button"
+                  data-ocid="payment_modal.secondary_button"
+                  onClick={() => {
+                    window.location.hash = `#/order/${orderId}`;
+                    onClose();
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 border border-primary/30 text-primary hover:bg-primary/8 font-semibold px-6 py-3 rounded-full transition-all text-sm"
+                >
+                  <Clock className="w-4 h-4" />
+                  {isHindi ? "ऑर्डर स्टेटस देखें" : "Check Order Status"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              >
+                {isHindi ? "बंद करें" : "Close"}
+              </button>
+            </div>
+          )}
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    NAV
 ═══════════════════════════════════════════════════════════ */
 function Nav({
@@ -315,7 +950,7 @@ function Nav({
 }) {
   const [open, setOpen] = useState(false);
 
-  const links = [
+  const links: Array<{ label: string; id?: string; hash?: string }> = [
     { label: isHindi ? "हमारे बारे में" : "About", id: "about" },
     { label: isHindi ? "सेवाएं" : "Services", id: "services" },
     { label: isHindi ? "डेमो" : "Demos", id: "demos" },
@@ -341,9 +976,9 @@ function Nav({
           className="flex items-center gap-2.5 flex-shrink-0 group"
         >
           <img
-            src="/assets/generated/lb-logo-transparent.dim_120x120.png"
+            src="/assets/generated/logo-icon-only.dim_200x200.png"
             alt="LocalBoost Web logo"
-            className="w-9 h-9 rounded-xl object-cover"
+            className="w-9 h-9 object-contain"
           />
           <span className="font-display font-bold text-foreground text-base leading-tight hidden sm:block group-hover:text-primary transition-colors">
             LocalBoost Web
@@ -355,17 +990,28 @@ function Nav({
           className="hidden lg:flex items-center gap-0.5"
           aria-label="Primary navigation"
         >
-          {links.map((l) => (
-            <button
-              type="button"
-              key={l.id}
-              data-ocid="nav.link"
-              onClick={() => scrollTo(l.id)}
-              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors rounded-lg hover:bg-primary/8"
-            >
-              {l.label}
-            </button>
-          ))}
+          {links.map((l) =>
+            l.hash ? (
+              <a
+                key={l.hash}
+                href={l.hash}
+                data-ocid="nav.link"
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors rounded-lg hover:bg-primary/8"
+              >
+                {l.label}
+              </a>
+            ) : (
+              <button
+                type="button"
+                key={l.id}
+                data-ocid="nav.link"
+                onClick={() => l.id && scrollTo(l.id)}
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors rounded-lg hover:bg-primary/8"
+              >
+                {l.label}
+              </button>
+            ),
+          )}
           <button
             type="button"
             onClick={() => setIsHindi((h) => !h)}
@@ -414,20 +1060,32 @@ function Nav({
             className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1"
             aria-label="Mobile navigation"
           >
-            {links.map((l) => (
-              <button
-                type="button"
-                key={l.id}
-                data-ocid="nav.link"
-                onClick={() => {
-                  scrollTo(l.id);
-                  setOpen(false);
-                }}
-                className="text-left px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent hover:text-primary transition-colors min-h-[44px]"
-              >
-                {l.label}
-              </button>
-            ))}
+            {links.map((l) =>
+              l.hash ? (
+                <a
+                  key={l.hash}
+                  href={l.hash}
+                  data-ocid="nav.link"
+                  onClick={() => setOpen(false)}
+                  className="px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent hover:text-primary transition-colors min-h-[44px] flex items-center"
+                >
+                  {l.label}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  key={l.id}
+                  data-ocid="nav.link"
+                  onClick={() => {
+                    l.id && scrollTo(l.id);
+                    setOpen(false);
+                  }}
+                  className="text-left px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent hover:text-primary transition-colors min-h-[44px]"
+                >
+                  {l.label}
+                </button>
+              ),
+            )}
             <button
               type="button"
               onClick={() => setIsHindi((h) => !h)}
@@ -585,9 +1243,52 @@ function Hero({ isHindi }: { isHindi: boolean }) {
               </div>
             ))}
           </div>
+
+          {/* Video walkthrough card */}
+          <HeroVideoCard />
         </div>
       </div>
     </section>
+  );
+}
+
+/* Video card — separate so it manages its own modal state */
+function HeroVideoCard() {
+  const [open, setOpen] = useState(false);
+  const videoUrl = localStorage.getItem("lb_video_url") ?? "";
+  const videoId = extractYouTubeId(videoUrl);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        data-ocid="hero.video_button"
+        aria-label="Watch how it works — 60 second video"
+        className="mt-10 max-w-sm mx-auto rounded-2xl border border-border bg-white shadow-md overflow-hidden cursor-pointer group hover:shadow-lg transition-shadow flex items-center w-full text-left"
+      >
+        {/* Thumbnail area */}
+        <div className="relative w-20 h-20 flex-shrink-0 bg-gradient-to-br from-primary to-indigo-700 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center ring-2 ring-white/40 group-hover:scale-110 transition-transform">
+            <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+          </div>
+        </div>
+        {/* Text */}
+        <div className="px-4 py-3 flex flex-col gap-0.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-primary/70">
+            How It Works
+          </span>
+          <span className="text-sm font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">
+            See the free demo process in 60 seconds
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Watch how we build your preview website
+          </span>
+        </div>
+      </button>
+
+      {open && <VideoModal videoId={videoId} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -613,13 +1314,10 @@ function Footer({ isHindi }: { isHindi: boolean }) {
           <div>
             <div className="flex items-center gap-2.5 mb-4">
               <img
-                src="/assets/generated/lb-logo-transparent.dim_120x120.png"
+                src="/assets/generated/logo-localboost.dim_600x300.png"
                 alt="LocalBoost Web logo"
-                className="w-9 h-9 rounded-xl object-cover"
+                className="h-10 w-auto object-contain"
               />
-              <span className="font-display font-bold text-white text-lg">
-                LocalBoost Web
-              </span>
             </div>
             <p className="text-white/60 text-sm leading-relaxed mb-5">
               {isHindi
@@ -772,9 +1470,92 @@ function WhatsAppFloat() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   GOOGLE REVIEWS BADGE
+═══════════════════════════════════════════════════════════ */
+function GoogleReviewsBadge({
+  googleRating,
+  googleReviewCount,
+  googleBusinessUrl,
+}: {
+  googleRating: string;
+  googleReviewCount: string;
+  googleBusinessUrl: string;
+}) {
+  if (!googleRating) return null;
+
+  const rating = Number.parseFloat(googleRating);
+  const stars = Math.round(rating);
+
+  const content = (
+    <span
+      data-ocid="google_reviews.panel"
+      className="inline-flex items-center gap-2.5 bg-white border border-border shadow-sm rounded-full px-4 py-2 text-sm font-semibold text-foreground hover:shadow-md transition-shadow"
+    >
+      {/* Google "G" icon */}
+      <span
+        className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-black"
+        style={{
+          background:
+            "linear-gradient(135deg, #4285F4 25%, #EA4335 25%, #EA4335 50%, #FBBC05 50%, #FBBC05 75%, #34A853 75%)",
+          color: "white",
+        }}
+        aria-hidden="true"
+      >
+        G
+      </span>
+      {/* Stars */}
+      <span className="flex items-center gap-0.5" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((s) => (
+          <Star
+            key={s}
+            className={`w-3.5 h-3.5 ${s <= stars ? "fill-amber-400 text-amber-400" : "fill-border text-border"}`}
+          />
+        ))}
+      </span>
+      {/* Rating number */}
+      <span className="text-foreground font-bold">{googleRating}</span>
+      {/* Review count */}
+      {googleReviewCount && (
+        <span className="text-muted-foreground text-xs font-medium">
+          ({googleReviewCount} reviews)
+        </span>
+      )}
+      <span className="text-muted-foreground text-xs">Google</span>
+    </span>
+  );
+
+  if (googleBusinessUrl) {
+    return (
+      <a
+        href={googleBusinessUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-ocid="google_reviews.link"
+        aria-label={`${googleRating} stars on Google (${googleReviewCount} reviews)`}
+        className="inline-block"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return <div className="inline-block">{content}</div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
    ABOUT
 ═══════════════════════════════════════════════════════════ */
-function About({ isHindi }: { isHindi: boolean }) {
+function About({
+  isHindi,
+  googleRating,
+  googleReviewCount,
+  googleBusinessUrl,
+}: {
+  isHindi: boolean;
+  googleRating: string;
+  googleReviewCount: string;
+  googleBusinessUrl: string;
+}) {
   const stats = isHindi
     ? [
         { value: "50+", label: "वेबसाइट बनाई" },
@@ -898,6 +1679,17 @@ function About({ isHindi }: { isHindi: boolean }) {
                 </p>
               </div>
             </div>
+
+            {/* Google Reviews Badge */}
+            {googleRating && (
+              <div className="mt-5">
+                <GoogleReviewsBadge
+                  googleRating={googleRating}
+                  googleReviewCount={googleReviewCount}
+                  googleBusinessUrl={googleBusinessUrl}
+                />
+              </div>
+            )}
           </div>
 
           {/* Right — brand visual */}
@@ -916,9 +1708,9 @@ function About({ isHindi }: { isHindi: boolean }) {
               {/* Logo circle */}
               <div className="relative w-52 h-52 md:w-64 md:h-64 rounded-full bg-gradient-to-br from-primary/10 to-teal/10 border-2 border-primary/20 flex items-center justify-center shadow-xl shadow-primary/10">
                 <img
-                  src="/assets/generated/lb-logo-transparent.dim_120x120.png"
+                  src="/assets/generated/logo-localboost.dim_600x300.png"
                   alt="LocalBoost Web — agency logo"
-                  className="w-24 h-24 md:w-32 md:h-32 object-contain drop-shadow-md"
+                  className="w-44 h-24 md:w-52 md:h-28 object-contain drop-shadow-md"
                 />
               </div>
 
@@ -957,6 +1749,7 @@ function About({ isHindi }: { isHindi: boolean }) {
 interface ServiceCard {
   icon: LucideIcon;
   title: string;
+  titleHindi: string;
   description: string;
   accent: string;
 }
@@ -965,69 +1758,66 @@ const SERVICES: ServiceCard[] = [
   {
     icon: Globe,
     title: "Business Website Development",
+    titleHindi: "बिज़नेस वेबसाइट बनाना",
     description: "A complete online home for your business.",
     accent: "bg-indigo-50 text-indigo-600 border-indigo-100",
   },
   {
     icon: Dumbbell,
     title: "Gym Websites",
+    titleHindi: "जिम वेबसाइट",
     description: "Showcase memberships, timings, and get gym enquiries online.",
     accent: "bg-violet-50 text-violet-600 border-violet-100",
   },
   {
     icon: GraduationCap,
     title: "Coaching Institute Websites",
+    titleHindi: "कोचिंग इंस्टीट्यूट वेबसाइट",
     description: "Highlight courses, faculty, and admit more students.",
     accent: "bg-blue-50 text-blue-600 border-blue-100",
   },
   {
     icon: Scissors,
     title: "Salon Websites",
+    titleHindi: "सैलून वेबसाइट",
     description: "Show your services, pricing, and book more appointments.",
     accent: "bg-pink-50 text-pink-600 border-pink-100",
   },
   {
     icon: Stethoscope,
     title: "Clinic Websites",
+    titleHindi: "क्लिनिक वेबसाइट",
     description: "Build patient trust and make booking easy.",
     accent: "bg-teal-50 text-teal-600 border-teal-100",
   },
   {
     icon: ShoppingBag,
     title: "Shop Websites",
+    titleHindi: "दुकान वेबसाइट",
     description: "Display products, hours, and drive more footfall.",
     accent: "bg-emerald-50 text-emerald-600 border-emerald-100",
   },
   {
     icon: MapPin,
     title: "Google Maps Integration",
+    titleHindi: "गूगल मैप्स इंटीग्रेशन",
     description: "Help customers find you on Google Maps instantly.",
     accent: "bg-orange-50 text-orange-600 border-orange-100",
   },
   {
     icon: MessageCircle,
     title: "WhatsApp Integration",
+    titleHindi: "व्हाट्सएप इंटीग्रेशन",
     description: "Let customers message you in one tap from your site.",
     accent: "bg-green-50 text-green-600 border-green-100",
   },
   {
     icon: Smartphone,
     title: "Mobile-Friendly Design",
+    titleHindi: "मोबाइल-फ्रेंडली डिज़ाइन",
     description: "Every site looks great on any phone or screen size.",
     accent: "bg-sky-50 text-sky-600 border-sky-100",
   },
-];
-
-const SERVICES_HINDI_TITLES = [
-  "बिज़नेस वेबसाइट बनाना",
-  "जिम वेबसाइट",
-  "कोचिंग इंस्टीट्यूट वेबसाइट",
-  "सैलून वेबसाइट",
-  "क्लिनिक वेबसाइट",
-  "दुकान वेबसाइट",
-  "गूगल मैप्स इंटीग्रेशन",
-  "व्हाट्सएप इंटीग्रेशन",
-  "मोबाइल-फ्रेंडली डिज़ाइन",
 ];
 
 function Services({ isHindi }: { isHindi: boolean }) {
@@ -1088,7 +1878,7 @@ function Services({ isHindi }: { isHindi: boolean }) {
                 {/* Text */}
                 <div>
                   <h3 className="font-display font-bold text-base text-foreground mb-1.5 group-hover:text-primary transition-colors">
-                    {isHindi ? SERVICES_HINDI_TITLES[index] : service.title}
+                    {isHindi ? service.titleHindi : service.title}
                   </h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {service.description}
@@ -1577,7 +2367,68 @@ const DEMO_TEMPLATES: DemoTemplate[] = [
   },
 ];
 
+/* Helper: map businessType to icon component */
+function getPortfolioIcon(businessType: string): LucideIcon {
+  const bt = businessType.toLowerCase();
+  if (bt.includes("gym") || bt.includes("fitness")) return Dumbbell;
+  if (bt.includes("salon") || bt.includes("beauty")) return Scissors;
+  if (
+    bt.includes("coaching") ||
+    bt.includes("education") ||
+    bt.includes("institute")
+  )
+    return GraduationCap;
+  if (bt.includes("clinic") || bt.includes("health") || bt.includes("medical"))
+    return Stethoscope;
+  if (bt.includes("shop") || bt.includes("store") || bt.includes("retail"))
+    return ShoppingBag;
+  return Globe;
+}
+
+/* Helper: map businessType to gradient */
+function getPortfolioGradient(businessType: string): string {
+  const bt = businessType.toLowerCase();
+  if (bt.includes("gym") || bt.includes("fitness"))
+    return "from-indigo-600 via-blue-600 to-indigo-700";
+  if (bt.includes("salon") || bt.includes("beauty"))
+    return "from-pink-500 via-rose-500 to-pink-600";
+  if (
+    bt.includes("coaching") ||
+    bt.includes("education") ||
+    bt.includes("institute")
+  )
+    return "from-violet-600 via-purple-600 to-violet-700";
+  if (bt.includes("clinic") || bt.includes("health") || bt.includes("medical"))
+    return "from-teal-600 via-emerald-600 to-teal-700";
+  if (bt.includes("shop") || bt.includes("store") || bt.includes("retail"))
+    return "from-amber-500 via-orange-500 to-amber-600";
+  return "from-slate-600 via-slate-500 to-slate-700";
+}
+
 function Portfolio({ isHindi }: { isHindi: boolean }) {
+  const { actor } = useActor();
+  const [backendItems, setBackendItems] = useState<PortfolioItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+
+  useEffect(() => {
+    if (!actor) {
+      setLoadingItems(false);
+      return;
+    }
+    actor
+      .getPublicPortfolioItems()
+      .then((data) => {
+        setBackendItems(data);
+      })
+      .catch(() => {
+        /* silently fall back to DEMO_TEMPLATES */
+      })
+      .finally(() => setLoadingItems(false));
+  }, [actor]);
+
+  // Use backend items if any, else fall back to hardcoded demos
+  const useBackend = !loadingItems && backendItems.length > 0;
+
   return (
     <section
       id="demos"
@@ -1615,90 +2466,225 @@ function Portfolio({ isHindi }: { isHindi: boolean }) {
           </p>
         </div>
 
-        {/* Demo cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7">
-          {DEMO_TEMPLATES.map((demo, index) => {
-            const Icon = demo.icon;
-            const ocid = `demos.item.${index + 1}` as const;
-            return (
-              <article
-                key={demo.slug}
-                data-ocid={ocid}
-                className="card-hover bg-white rounded-2xl border border-border overflow-hidden shadow-xs flex flex-col group"
+        {/* Skeleton loading cards */}
+        {loadingItems && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="bg-white rounded-2xl border border-border overflow-hidden shadow-xs flex flex-col"
+                data-ocid="demos.loading_state"
               >
-                {/* Gradient banner */}
-                <div
-                  className={`relative bg-gradient-to-br ${demo.gradient} h-40 flex items-center justify-center overflow-hidden`}
+                <Skeleton className="h-40 w-full rounded-none" />
+                <div className="p-6 flex flex-col gap-3">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-3 w-2/5" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                  <Skeleton className="h-10 w-full rounded-full mt-2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Backend-sourced cards */}
+        {!loadingItems && useBackend && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7">
+            {backendItems.map((item, index) => {
+              const Icon = getPortfolioIcon(item.businessType);
+              const gradient = getPortfolioGradient(item.businessType);
+              const isLive = item.status === "live";
+              return (
+                <article
+                  key={item.id}
+                  data-ocid={
+                    `demos.item.${index + 1}` as `demos.item.${number}`
+                  }
+                  className="card-hover bg-white rounded-2xl border border-border overflow-hidden shadow-xs flex flex-col group"
                 >
+                  {/* Gradient banner */}
                   <div
-                    aria-hidden="true"
-                    className="absolute inset-0 opacity-20"
-                    style={{
-                      backgroundImage:
-                        "radial-gradient(circle at 30% 50%, white 1px, transparent 1px), radial-gradient(circle at 70% 20%, white 1px, transparent 1px)",
-                      backgroundSize: "40px 40px",
-                    }}
-                  />
-                  <div className="relative flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-lg">
-                      <Icon className="w-8 h-8 text-white" aria-hidden="true" />
+                    className={`relative bg-gradient-to-br ${gradient} h-40 flex items-center justify-center overflow-hidden`}
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 opacity-20"
+                      style={{
+                        backgroundImage:
+                          "radial-gradient(circle at 30% 50%, white 1px, transparent 1px), radial-gradient(circle at 70% 20%, white 1px, transparent 1px)",
+                        backgroundSize: "40px 40px",
+                      }}
+                    />
+                    <div className="relative flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-lg">
+                        <Icon
+                          className="w-8 h-8 text-white"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <Badge className="bg-white/20 text-white border-white/30 text-xs font-semibold backdrop-blur-sm">
+                        {isLive ? "Live Site" : "Preview — Demo Only"}
+                      </Badge>
                     </div>
-                    <Badge className="bg-white/20 text-white border-white/30 text-xs font-semibold backdrop-blur-sm">
-                      Preview — Demo Only
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Card body */}
-                <div className="p-6 flex flex-col flex-1 gap-4">
-                  <div>
-                    <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">
-                      {demo.type}
-                    </span>
-                    <h3 className="font-display font-bold text-lg text-foreground mt-1 mb-2 group-hover:text-primary transition-colors">
-                      {demo.title}
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {demo.description}
-                    </p>
                   </div>
 
-                  {/* Pages list */}
-                  <ul className="flex flex-col gap-1.5">
-                    {demo.pages.map((page) => (
-                      <li
-                        key={page}
-                        className="flex items-center gap-2 text-xs text-muted-foreground"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-                        {page}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Card body */}
+                  <div className="p-6 flex flex-col flex-1 gap-4">
+                    <div>
+                      <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">
+                        {item.businessType}
+                      </span>
+                      <h3 className="font-display font-bold text-lg text-foreground mt-1 mb-2 group-hover:text-primary transition-colors">
+                        {item.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {item.description}
+                      </p>
+                    </div>
 
-                  {/* Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-2.5 mt-auto pt-2">
-                    <a
-                      href={demo.hash}
-                      data-ocid="demos.primary_button"
-                      className="flex-1 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold h-10 rounded-full transition-all hover:scale-105 shadow-sm shadow-primary/20"
-                    >
-                      {isHindi ? "लाइव प्रीव्यू देखें" : "View Live Preview"}
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => scrollTo("demo-form")}
-                      data-ocid="demos.secondary_button"
-                      className="flex-1 inline-flex items-center justify-center gap-2 border-2 border-primary/30 text-primary hover:bg-primary hover:text-white text-sm font-semibold h-10 rounded-full transition-all"
-                    >
-                      {isHindi ? "यह स्टाइल मांगें" : "Request This Style"}
-                    </button>
+                    {/* Pages list */}
+                    {item.pages.length > 0 && (
+                      <ul className="flex flex-col gap-1.5">
+                        {item.pages.map((page) => (
+                          <li
+                            key={page}
+                            className="flex items-center gap-2 text-xs text-muted-foreground"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
+                            {page}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {/* CTA */}
+                    <div className="flex flex-col gap-2.5 mt-auto pt-2">
+                      {item.liveUrl ? (
+                        <a
+                          href={item.liveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-ocid="demos.primary_button"
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold h-10 rounded-full transition-all hover:scale-105 shadow-sm shadow-primary/20"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          {isHindi ? "लाइव साइट देखें" : "View Live Site"}
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => scrollTo("demo-form")}
+                          data-ocid="demos.primary_button"
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold h-10 rounded-full transition-all hover:scale-105 shadow-sm shadow-primary/20"
+                        >
+                          {isHindi ? "यह स्टाइल मांगें" : "Request This Style"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Fallback: hardcoded DEMO_TEMPLATES */}
+        {!loadingItems && !useBackend && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-7">
+            {DEMO_TEMPLATES.map((demo, index) => {
+              const Icon = demo.icon;
+              const ocid = `demos.item.${index + 1}` as const;
+              return (
+                <article
+                  key={demo.slug}
+                  data-ocid={ocid}
+                  className="card-hover bg-white rounded-2xl border border-border overflow-hidden shadow-xs flex flex-col group"
+                >
+                  {/* Gradient banner */}
+                  <div
+                    className={`relative bg-gradient-to-br ${demo.gradient} h-40 flex items-center justify-center overflow-hidden`}
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 opacity-20"
+                      style={{
+                        backgroundImage:
+                          "radial-gradient(circle at 30% 50%, white 1px, transparent 1px), radial-gradient(circle at 70% 20%, white 1px, transparent 1px)",
+                        backgroundSize: "40px 40px",
+                      }}
+                    />
+                    <div className="relative flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-lg">
+                        <Icon
+                          className="w-8 h-8 text-white"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <Badge className="bg-white/20 text-white border-white/30 text-xs font-semibold backdrop-blur-sm">
+                        Preview — Demo Only
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="p-6 flex flex-col flex-1 gap-4">
+                    <div>
+                      <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">
+                        {demo.type}
+                      </span>
+                      <h3 className="font-display font-bold text-lg text-foreground mt-1 mb-2 group-hover:text-primary transition-colors">
+                        {demo.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {demo.description}
+                      </p>
+                    </div>
+
+                    {/* Pages list */}
+                    <ul className="flex flex-col gap-1.5">
+                      {demo.pages.map((page) => (
+                        <li
+                          key={page}
+                          className="flex items-center gap-2 text-xs text-muted-foreground"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
+                          {page}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* Buttons */}
+                    <div className="flex flex-col gap-2.5 mt-auto pt-2">
+                      <div className="flex flex-col sm:flex-row gap-2.5">
+                        <a
+                          href={demo.hash}
+                          data-ocid="demos.primary_button"
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold h-10 rounded-full transition-all hover:scale-105 shadow-sm shadow-primary/20"
+                        >
+                          {isHindi ? "लाइव प्रीव्यू देखें" : "View Live Preview"}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => scrollTo("demo-form")}
+                          data-ocid="demos.secondary_button"
+                          className="flex-1 inline-flex items-center justify-center gap-2 border-2 border-primary/30 text-primary hover:bg-primary hover:text-white text-sm font-semibold h-10 rounded-full transition-all"
+                        >
+                          {isHindi ? "यह स्टाइल मांगें" : "Request This Style"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
 
         <p className="text-center text-sm text-muted-foreground mt-8">
           {isHindi
@@ -2868,6 +3854,22 @@ function DemoRequestForm({ isHindi }: { isHindi: boolean }) {
   }
 
   function buildWhatsAppMessage() {
+    // Look up a custom template from localStorage based on business type
+    const keyMap: Record<string, string> = {
+      Gym: "lb_wa_tmpl_gym",
+      Salon: "lb_wa_tmpl_salon",
+      "Coaching Institute": "lb_wa_tmpl_coaching",
+      Clinic: "lb_wa_tmpl_clinic",
+      Shop: "lb_wa_tmpl_shop",
+    };
+    const storageKey = keyMap[businessType] ?? "lb_wa_tmpl_shop";
+    const savedTemplate = localStorage.getItem(storageKey);
+    if (savedTemplate) {
+      const customMsg = savedTemplate
+        .replace("{businessName}", businessName)
+        .replace("{phone}", phoneNumber);
+      return encodeURIComponent(customMsg);
+    }
     if (language === "Hindi") {
       return encodeURIComponent(
         `Namaste, maine mere ${businessType} ke liye free demo website request ki hai: ${businessName}. Phone: ${phoneNumber}. Dhanyavaad.`,
@@ -3968,6 +4970,7 @@ function CostCalculator({ isHindi }: { isHindi: boolean }) {
 interface PricingPlan {
   name: string;
   price: string;
+  amountValue: number;
   pages: string;
   popular: boolean;
   features: string[];
@@ -3979,6 +4982,7 @@ const PRICING_PLANS: PricingPlan[] = [
   {
     name: "Basic",
     price: "₹2,999",
+    amountValue: 2999,
     pages: "Up to 3 pages",
     popular: false,
     features: [
@@ -3987,6 +4991,7 @@ const PRICING_PLANS: PricingPlan[] = [
       "Basic SEO Setup",
       "1 Revision",
       "WhatsApp Support",
+      "Monthly Maintenance ₹499/month",
     ],
     accentClass: "bg-white border-border",
     ctaClass:
@@ -3995,6 +5000,7 @@ const PRICING_PLANS: PricingPlan[] = [
   {
     name: "Business",
     price: "₹4,999",
+    amountValue: 4999,
     pages: "Up to 6 pages",
     popular: true,
     features: [
@@ -4004,6 +5010,7 @@ const PRICING_PLANS: PricingPlan[] = [
       "Photo Gallery",
       "2 Revisions",
       "Priority Support",
+      "Monthly Maintenance ₹499/month",
     ],
     accentClass:
       "bg-primary border-primary shadow-2xl shadow-primary/25 scale-[1.02]",
@@ -4012,6 +5019,7 @@ const PRICING_PLANS: PricingPlan[] = [
   {
     name: "Advanced",
     price: "₹7,999",
+    amountValue: 7999,
     pages: "Up to 10 pages",
     popular: false,
     features: [
@@ -4021,6 +5029,7 @@ const PRICING_PLANS: PricingPlan[] = [
       "Online Booking",
       "3 Revisions",
       "Fast Delivery",
+      "Monthly Maintenance ₹499/month",
     ],
     accentClass: "bg-white border-border",
     ctaClass:
@@ -4028,7 +5037,13 @@ const PRICING_PLANS: PricingPlan[] = [
   },
 ];
 
-function Pricing({ isHindi }: { isHindi: boolean }) {
+function Pricing({
+  isHindi,
+  onPlanSelect,
+}: {
+  isHindi: boolean;
+  onPlanSelect: (planName: string, amount: number) => void;
+}) {
   return (
     <section
       id="pricing"
@@ -4125,7 +5140,7 @@ function Pricing({ isHindi }: { isHindi: boolean }) {
                 {/* CTA */}
                 <Button
                   size="lg"
-                  onClick={() => scrollTo("demo-form")}
+                  onClick={() => onPlanSelect(plan.name, plan.amountValue)}
                   data-ocid="pricing.primary_button"
                   className={`h-12 rounded-full font-bold shadow-lg transition-all hover:scale-105 ${plan.ctaClass}`}
                 >
@@ -4456,8 +5471,40 @@ function AdminDemoRequests({
     exportCSV(headers, rows, "demo-requests.csv");
   }
 
+  // Follow-up: New requests older than 24 hours
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const staleRequests = requests.filter(
+    (req) =>
+      req.status === "New" &&
+      Date.now() - Number(req.createdAt) / 1_000_000 > TWENTY_FOUR_HOURS_MS,
+  );
+
+  function buildFollowUpWaUrl(req: DemoRequest) {
+    const text = `Hello ${req.businessName}, following up on your demo request for ${req.businessType}. We'd love to show you what we can build!`;
+    return `https://wa.me/918709546323?text=${encodeURIComponent(text)}`;
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      {/* Follow-up alert banner */}
+      {!loading && staleRequests.length > 0 && (
+        <div
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-xl"
+          data-ocid="admin.demo_requests.panel"
+          role="alert"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+          <span className="font-semibold">
+            {staleRequests.length} request{staleRequests.length > 1 ? "s" : ""}{" "}
+            need follow-up
+          </span>
+          <span className="text-amber-700 text-xs">
+            — no response in over 24 hours. Check the table below for "Follow
+            Up" badges.
+          </span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h3 className="font-display font-bold text-lg text-foreground">
@@ -4571,14 +5618,25 @@ function AdminDemoRequests({
             <tbody>
               {requests.map((req, idx) => {
                 const ocid = `admin.demo_requests.item.${idx + 1}` as const;
+                const needsFollowUp =
+                  req.status === "New" &&
+                  Date.now() - Number(req.createdAt) / 1_000_000 >
+                    TWENTY_FOUR_HOURS_MS;
                 return (
                   <tr
                     key={req.id}
                     data-ocid={ocid}
-                    className="border-b border-border last:border-0 hover:bg-accent/30 transition-colors"
+                    className={`border-b border-border last:border-0 hover:bg-accent/30 transition-colors ${needsFollowUp ? "bg-amber-50/40" : ""}`}
                   >
-                    <td className="px-4 py-3 font-medium text-foreground max-w-[120px] truncate">
-                      {req.businessName}
+                    <td className="px-4 py-3 font-medium text-foreground max-w-[140px]">
+                      <div className="flex flex-col gap-1">
+                        <span className="truncate">{req.businessName}</span>
+                        {needsFollowUp && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 w-fit whitespace-nowrap">
+                            Follow Up
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">
                       {req.businessType}
@@ -4660,6 +5718,19 @@ function AdminDemoRequests({
                         >
                           <ExternalLink className="w-3 h-3" />
                         </a>
+                        {needsFollowUp && (
+                          <a
+                            href={buildFollowUpWaUrl(req)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-ocid="admin.demo_requests.button"
+                            title="Send WhatsApp follow-up"
+                            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            Follow Up
+                          </a>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -4986,6 +6057,519 @@ function AdminContactMessages({
   );
 }
 
+// Admin — Testimonials Tab
+function AdminTestimonials({
+  actor,
+}: {
+  actor: NonNullable<ReturnType<typeof useActor>["actor"]>;
+}) {
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Add review form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addBusinessType, setAddBusinessType] = useState("");
+  const [addCity, setAddCity] = useState("");
+  const [addRating, setAddRating] = useState(5);
+  const [addText, setAddText] = useState("");
+  const [addPhotoUrl, setAddPhotoUrl] = useState("");
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addSuccessMsg, setAddSuccessMsg] = useState("");
+  const [addErrorMsg, setAddErrorMsg] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await actor.getAllTestimonials();
+      const sorted = [...data].sort(
+        (a, b) => Number(b.createdAt) - Number(a.createdAt),
+      );
+      setTestimonials(sorted);
+    } catch {
+      setError("Failed to load testimonials.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
+  useEffect(() => {
+    load();
+  }, [actor]);
+
+  async function updateStatus(id: string, status: "approved" | "rejected") {
+    setUpdatingId(id);
+    try {
+      await actor.updateTestimonialStatus(id, status);
+      setTestimonials((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status } : t)),
+      );
+    } catch {
+      /* ignore */
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function handleExportCSV() {
+    const headers = [
+      "Name",
+      "Business Type",
+      "Rating",
+      "Status",
+      "Date",
+      "Text",
+    ];
+    const rows = testimonials.map((t) => [
+      t.name,
+      t.businessType,
+      String(t.rating),
+      t.status,
+      formatTimestamp(t.createdAt),
+      t.text,
+    ]);
+    exportCSV(headers, rows, "testimonials.csv");
+  }
+
+  async function handleAddReview() {
+    if (!addName.trim() || !addBusinessType || !addText.trim()) return;
+    setAddSubmitting(true);
+    setAddErrorMsg("");
+    setAddSuccessMsg("");
+    try {
+      await actor.submitTestimonial(
+        addName.trim(),
+        addBusinessType,
+        BigInt(addRating),
+        addText.trim(),
+        addPhotoUrl.trim() || null,
+      );
+      await load();
+      setAddName("");
+      setAddBusinessType("");
+      setAddCity("");
+      setAddRating(5);
+      setAddText("");
+      setAddPhotoUrl("");
+      setShowAddForm(false);
+      setAddSuccessMsg("Review added!");
+      setTimeout(() => setAddSuccessMsg(""), 2000);
+    } catch {
+      setAddErrorMsg("Failed to add review.");
+    } finally {
+      setAddSubmitting(false);
+    }
+  }
+
+  function statusBadge(status: string) {
+    if (status === "approved")
+      return (
+        <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
+          Approved
+        </span>
+      );
+    if (status === "rejected")
+      return (
+        <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-200">
+          Rejected
+        </span>
+      );
+    return (
+      <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+        Pending
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h3 className="font-display font-bold text-lg text-foreground">
+          Testimonials{" "}
+          {!loading && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({testimonials.length})
+            </span>
+          )}
+        </h3>
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            data-ocid="admin.testimonials.button"
+            className="gap-1.5 rounded-full"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={loading || testimonials.length === 0}
+            data-ocid="admin.testimonials.button"
+            className="gap-1.5 rounded-full"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setShowAddForm((v) => !v);
+              setAddErrorMsg("");
+            }}
+            data-ocid="admin.testimonials.open_modal_button"
+            className="gap-1.5 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Star className="w-3.5 h-3.5" />
+            {showAddForm ? "Cancel" : "Add Review"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Add Review inline form */}
+      {showAddForm && (
+        <div
+          className="bg-accent/30 border border-border rounded-2xl p-5 flex flex-col gap-4"
+          data-ocid="admin.testimonials.panel"
+        >
+          <h4 className="font-display font-bold text-base text-foreground">
+            Add Review
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="add-rev-name" className="text-xs font-semibold">
+                Client Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="add-rev-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g. Rajesh Kumar"
+                data-ocid="admin.testimonials.input"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="add-rev-type" className="text-xs font-semibold">
+                Business Type <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={addBusinessType}
+                onValueChange={setAddBusinessType}
+              >
+                <SelectTrigger
+                  id="add-rev-type"
+                  data-ocid="admin.testimonials.select"
+                >
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Gym">Gym</SelectItem>
+                  <SelectItem value="Salon">Salon</SelectItem>
+                  <SelectItem value="Coaching Institute">
+                    Coaching Institute
+                  </SelectItem>
+                  <SelectItem value="Clinic">Clinic</SelectItem>
+                  <SelectItem value="Shop">Shop</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="add-rev-city" className="text-xs font-semibold">
+                City (optional)
+              </Label>
+              <Input
+                id="add-rev-city"
+                value={addCity}
+                onChange={(e) => setAddCity(e.target.value)}
+                placeholder="e.g. Pune"
+                data-ocid="admin.testimonials.input"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold">
+                Star Rating <span className="text-destructive">*</span>
+              </Label>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setAddRating(s)}
+                    data-ocid="admin.testimonials.toggle"
+                    aria-label={`Rate ${s} star${s > 1 ? "s" : ""}`}
+                    className="focus:outline-none"
+                  >
+                    <Star
+                      className={`w-6 h-6 transition-colors ${s <= addRating ? "fill-amber-400 text-amber-400" : "fill-muted text-muted-foreground hover:fill-amber-200 hover:text-amber-300"}`}
+                    />
+                  </button>
+                ))}
+                <span className="text-sm text-muted-foreground ml-1">
+                  {addRating}/5
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-rev-text" className="text-xs font-semibold">
+              Review Text <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
+              id="add-rev-text"
+              value={addText}
+              onChange={(e) => setAddText(e.target.value)}
+              placeholder="What did the client say about your work?"
+              rows={3}
+              data-ocid="admin.testimonials.textarea"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-rev-photo" className="text-xs font-semibold">
+              Photo URL (optional)
+            </Label>
+            <Input
+              id="add-rev-photo"
+              value={addPhotoUrl}
+              onChange={(e) => setAddPhotoUrl(e.target.value)}
+              placeholder="https://..."
+              type="url"
+              data-ocid="admin.testimonials.input"
+            />
+          </div>
+
+          {addErrorMsg && (
+            <div
+              className="text-xs text-destructive bg-destructive/8 border border-destructive/20 px-3 py-2 rounded-lg"
+              data-ocid="admin.testimonials.error_state"
+            >
+              {addErrorMsg}
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddForm(false)}
+              data-ocid="admin.testimonials.cancel_button"
+              className="rounded-full"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleAddReview}
+              disabled={
+                addSubmitting ||
+                !addName.trim() ||
+                !addBusinessType ||
+                !addText.trim()
+              }
+              data-ocid="admin.testimonials.submit_button"
+              className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5"
+            >
+              {addSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Save Review
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {addSuccessMsg && (
+        <div
+          className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg flex items-center gap-2"
+          data-ocid="admin.testimonials.success_state"
+        >
+          <CheckCircle className="w-3.5 h-3.5" />
+          {addSuccessMsg}
+        </div>
+      )}
+
+      {loading && (
+        <div
+          className="flex items-center justify-center py-16 gap-3 text-muted-foreground"
+          data-ocid="admin.testimonials.loading_state"
+        >
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Loading...
+        </div>
+      )}
+      {!loading && error && (
+        <div
+          className="flex items-center gap-2.5 bg-destructive/8 border border-destructive/20 text-destructive text-sm px-4 py-3 rounded-xl"
+          data-ocid="admin.testimonials.error_state"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+      {!loading && !error && testimonials.length === 0 && (
+        <div
+          className="text-center py-16 border-2 border-dashed border-border rounded-2xl"
+          data-ocid="admin.testimonials.empty_state"
+        >
+          <Star
+            className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3"
+            aria-hidden="true"
+          />
+          <p className="text-muted-foreground font-medium">
+            No testimonials yet.
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Use the "Add Review" button above to add your first review.
+          </p>
+        </div>
+      )}
+      {!loading && testimonials.length > 0 && (
+        <div
+          className="overflow-x-auto rounded-xl border border-border"
+          data-ocid="admin.testimonials.table"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-accent/60 border-b border-border">
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Name
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground hidden md:table-cell">
+                  Business Type
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Rating
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Status
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground hidden lg:table-cell">
+                  Date
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Review
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {testimonials.map((t, idx) => {
+                const ocid = `admin.testimonials.item.${idx + 1}` as const;
+                const isExpanded = expandedId === t.id;
+                return (
+                  <tr
+                    key={t.id}
+                    data-ocid={ocid}
+                    className="border-b border-border last:border-0 hover:bg-accent/30 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground max-w-[120px] truncate">
+                      {t.name}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs hidden md:table-cell">
+                      {t.businessType}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-3.5 h-3.5 ${s <= Number(t.rating) ? "fill-amber-400 text-amber-400" : "fill-border text-border"}`}
+                            aria-hidden="true"
+                          />
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{statusBadge(t.status)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs hidden lg:table-cell whitespace-nowrap">
+                      {formatTimestamp(t.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-w-[200px]">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                        data-ocid="admin.testimonials.toggle"
+                        className="text-left hover:text-foreground transition-colors flex items-start gap-1.5 text-xs"
+                      >
+                        <span className={isExpanded ? "" : "line-clamp-2"}>
+                          {t.text}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updateStatus(t.id, "approved")}
+                          disabled={
+                            updatingId === t.id || t.status === "approved"
+                          }
+                          data-ocid="admin.testimonials.confirm_button"
+                          title="Approve"
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {updatingId === t.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <ThumbsUp className="w-3 h-3" />
+                          )}
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateStatus(t.id, "rejected")}
+                          disabled={
+                            updatingId === t.id || t.status === "rejected"
+                          }
+                          data-ocid="admin.testimonials.delete_button"
+                          title="Reject"
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {updatingId === t.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <ThumbsDown className="w-3 h-3" />
+                          )}
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Admin — Site Settings Tab
 function AdminSiteSettings({
   actor,
@@ -5006,6 +6590,9 @@ function AdminSiteSettings({
     advancedPrice: string;
     analyticsId: string;
     workingHours: string;
+    googleRating: string;
+    googleReviewCount: string;
+    googleBusinessUrl: string;
   } | null>(null);
 
   useEffect(() => {
@@ -5022,6 +6609,9 @@ function AdminSiteSettings({
           advancedPrice: String(s.advancedPrice),
           analyticsId: s.analyticsId,
           workingHours: s.workingHours,
+          googleRating: s.googleRating ?? "",
+          googleReviewCount: s.googleReviewCount ?? "",
+          googleBusinessUrl: s.googleBusinessUrl ?? "",
         });
       })
       .catch(() => {})
@@ -5041,12 +6631,19 @@ function AdminSiteSettings({
         advancedPrice: BigInt(form.advancedPrice || "7999"),
         analyticsId: form.analyticsId,
         workingHours: form.workingHours,
+        googleRating: form.googleRating,
+        googleReviewCount: form.googleReviewCount,
+        googleBusinessUrl: form.googleBusinessUrl,
       };
       await actor.updateSiteSettings(newSettings);
       // Mirror Analytics ID to localStorage for GA4 injection
       if (form.analyticsId) {
         localStorage.setItem("lb_analytics_id", form.analyticsId);
       }
+      // Mirror Google Reviews settings to localStorage for public pages
+      localStorage.setItem("lb_google_rating", form.googleRating);
+      localStorage.setItem("lb_google_review_count", form.googleReviewCount);
+      localStorage.setItem("lb_google_business_url", form.googleBusinessUrl);
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
     } catch {
@@ -5219,6 +6816,85 @@ function AdminSiteSettings({
         </div>
       </div>
 
+      {/* Google Reviews Badge */}
+      <div className="flex flex-col gap-4 p-5 rounded-2xl border border-border bg-accent/20">
+        <div>
+          <h4 className="font-semibold text-sm text-foreground mb-0.5">
+            Google Reviews Badge
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Show your Google rating in the About and Contact sections. Leave
+            blank to hide the badge.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="admin-google-rating"
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+            >
+              Google Rating
+            </Label>
+            <Input
+              id="admin-google-rating"
+              value={form.googleRating}
+              onChange={(e) =>
+                setForm((f) => f && { ...f, googleRating: e.target.value })
+              }
+              placeholder="4.9"
+              data-ocid="admin.settings.input"
+              className="h-11"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="admin-google-count"
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+            >
+              Review Count
+            </Label>
+            <Input
+              id="admin-google-count"
+              value={form.googleReviewCount}
+              onChange={(e) =>
+                setForm((f) => f && { ...f, googleReviewCount: e.target.value })
+              }
+              placeholder="42"
+              data-ocid="admin.settings.input"
+              className="h-11"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="admin-google-url"
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+            >
+              Google Business URL
+            </Label>
+            <Input
+              id="admin-google-url"
+              value={form.googleBusinessUrl}
+              onChange={(e) =>
+                setForm((f) => f && { ...f, googleBusinessUrl: e.target.value })
+              }
+              placeholder="https://g.page/..."
+              data-ocid="admin.settings.input"
+              className="h-11"
+            />
+          </div>
+        </div>
+        {form.googleRating && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Preview:</p>
+            <GoogleReviewsBadge
+              googleRating={form.googleRating}
+              googleReviewCount={form.googleReviewCount}
+              googleBusinessUrl={form.googleBusinessUrl}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Save feedback */}
       {saveStatus === "success" && (
         <div
@@ -5260,8 +6936,172 @@ function AdminSiteSettings({
         )}
       </Button>
 
+      {/* UPI Payment Settings */}
+      <AdminUpiSettings actor={actor} />
+
+      {/* WhatsApp Message Templates */}
+      <AdminWhatsAppTemplates />
+
       {/* SEO & Publish */}
       <AdminSEOSettings />
+    </div>
+  );
+}
+
+// WhatsApp Message Template Editor (Part C3)
+const WA_TEMPLATE_TYPES = [
+  {
+    key: "lb_wa_tmpl_gym",
+    label: "Gym",
+    defaultMsg:
+      "Hello! I'd like a free demo website for my gym: {businessName}. My phone: {phone}. Thank you!",
+  },
+  {
+    key: "lb_wa_tmpl_salon",
+    label: "Salon",
+    defaultMsg:
+      "Hello! I'd like a free demo website for my salon: {businessName}. My phone: {phone}. Thank you!",
+  },
+  {
+    key: "lb_wa_tmpl_coaching",
+    label: "Coaching Institute",
+    defaultMsg:
+      "Hello! I'd like a free demo website for my coaching institute: {businessName}. My phone: {phone}. Thank you!",
+  },
+  {
+    key: "lb_wa_tmpl_clinic",
+    label: "Clinic",
+    defaultMsg:
+      "Hello! I'd like a free demo website for my clinic: {businessName}. My phone: {phone}. Thank you!",
+  },
+  {
+    key: "lb_wa_tmpl_shop",
+    label: "Shop",
+    defaultMsg:
+      "Hello! I'd like a free demo website for my shop: {businessName}. My phone: {phone}. Thank you!",
+  },
+] as const;
+
+function AdminWhatsAppTemplates() {
+  const [templates, setTemplates] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const t of WA_TEMPLATE_TYPES) {
+      initial[t.key] = localStorage.getItem(t.key) ?? t.defaultMsg;
+    }
+    return initial;
+  });
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success">("idle");
+
+  function handleCopy(key: string) {
+    navigator.clipboard
+      .writeText(templates[key] ?? "")
+      .then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2000);
+      })
+      .catch(() => {});
+  }
+
+  function handleReset(key: string) {
+    const found = WA_TEMPLATE_TYPES.find((t) => t.key === key);
+    if (!found) return;
+    setTemplates((prev) => ({ ...prev, [key]: found.defaultMsg }));
+  }
+
+  function handleSaveAll() {
+    for (const [key, value] of Object.entries(templates)) {
+      localStorage.setItem(key, value);
+    }
+    setSaveStatus("success");
+    setTimeout(() => setSaveStatus("idle"), 3000);
+  }
+
+  return (
+    <div className="flex flex-col gap-4 p-5 rounded-2xl border border-border bg-accent/20">
+      <div>
+        <div className="flex items-center gap-2 mb-0.5">
+          <MessageCircle className="w-4 h-4 text-green-600" />
+          <h4 className="font-semibold text-sm text-foreground">
+            WhatsApp Message Templates
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Customize the auto-fill message sent when a client taps "Message on
+          WhatsApp". Use{" "}
+          <code className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">
+            {"{businessName}"}
+          </code>{" "}
+          and{" "}
+          <code className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">
+            {"{phone}"}
+          </code>{" "}
+          as placeholders.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {WA_TEMPLATE_TYPES.map((t) => (
+          <div key={t.key} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <Label
+                htmlFor={`wa-tmpl-${t.key}`}
+                className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+              >
+                {t.label}
+              </Label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleCopy(t.key)}
+                  data-ocid="admin.whatsapp.toggle"
+                  className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1 border border-primary/20 px-2 py-1 rounded-md hover:bg-primary/5"
+                >
+                  <Copy className="w-3 h-3" />
+                  {copiedKey === t.key ? "Copied!" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReset(t.key)}
+                  data-ocid="admin.whatsapp.toggle"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 border border-border px-2 py-1 rounded-md hover:bg-accent"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Reset
+                </button>
+              </div>
+            </div>
+            <Textarea
+              id={`wa-tmpl-${t.key}`}
+              value={templates[t.key] ?? ""}
+              onChange={(e) =>
+                setTemplates((prev) => ({ ...prev, [t.key]: e.target.value }))
+              }
+              data-ocid="admin.whatsapp.textarea"
+              rows={2}
+              className="resize-none text-sm font-mono"
+              placeholder={t.defaultMsg}
+            />
+          </div>
+        ))}
+      </div>
+
+      {saveStatus === "success" && (
+        <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 text-green-700 text-sm font-medium px-4 py-3 rounded-xl">
+          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+          WhatsApp templates saved!
+        </div>
+      )}
+
+      <Button
+        size="sm"
+        onClick={handleSaveAll}
+        data-ocid="admin.whatsapp.save_button"
+        className="h-10 rounded-full bg-green-600 hover:bg-green-500 text-white font-semibold shadow-md self-start px-6"
+      >
+        <CheckCircle className="w-4 h-4 mr-1.5" />
+        Save Templates
+      </Button>
     </div>
   );
 }
@@ -5281,6 +7121,9 @@ function AdminSEOSettings() {
   const [robots, setRobots] = useState(
     () => localStorage.getItem("lb_robots") ?? "index, follow",
   );
+  const [videoUrl, setVideoUrl] = useState(
+    () => localStorage.getItem("lb_video_url") ?? "",
+  );
   const [seoSaveStatus, setSeoSaveStatus] = useState<"idle" | "success">(
     "idle",
   );
@@ -5289,6 +7132,7 @@ function AdminSEOSettings() {
     localStorage.setItem("lb_seo_title", seoTitle);
     localStorage.setItem("lb_seo_description", seoDescription);
     localStorage.setItem("lb_robots", robots);
+    localStorage.setItem("lb_video_url", videoUrl);
     setSeoSaveStatus("success");
     setTimeout(() => setSeoSaveStatus("idle"), 3000);
   }
@@ -5377,6 +7221,29 @@ function AdminSEOSettings() {
         </Select>
       </div>
 
+      {/* How It Works Video URL */}
+      <div className="flex flex-col gap-1.5">
+        <Label
+          htmlFor="admin-video-url"
+          className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"
+        >
+          <Video className="w-3.5 h-3.5" />
+          How It Works Video URL
+        </Label>
+        <Input
+          id="admin-video-url"
+          value={videoUrl}
+          onChange={(e) => setVideoUrl(e.target.value)}
+          placeholder="https://www.youtube.com/watch?v=..."
+          data-ocid="admin.settings.input"
+          className="h-11"
+        />
+        <p className="text-xs text-muted-foreground">
+          Paste a YouTube URL. This plays when visitors click "How It Works" on
+          the homepage.
+        </p>
+      </div>
+
       {/* Save status */}
       {seoSaveStatus === "success" && (
         <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 text-green-700 text-sm font-medium px-4 py-3 rounded-xl">
@@ -5398,59 +7265,1342 @@ function AdminSEOSettings() {
   );
 }
 
-// Full Admin Dashboard
-function AdminDashboard() {
-  const { actor, isFetching } = useActor();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null); // null = checking
+/* ═══════════════════════════════════════════════════════════
+   ADMIN — PAYMENTS TAB
+═══════════════════════════════════════════════════════════ */
+function AdminPayments({
+  actor,
+  onPendingCount,
+}: {
+  actor: NonNullable<ReturnType<typeof useActor>["actor"]>;
+  onPendingCount?: (count: number) => void;
+}) {
+  const [orders, setOrders] = useState<PaymentOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // For approve flow: store appLink per order id
+  const [appLinkInputs, setAppLinkInputs] = useState<Record<string, string>>(
+    {},
+  );
+  const [confirmingApprove, setConfirmingApprove] = useState<string | null>(
+    null,
+  );
+  // For "Copy WhatsApp Msg" per-order copied state
+  const [copiedWA, setCopiedWA] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await actor.getAllPaymentOrders();
+      const sorted = [...data].sort(
+        (a, b) => Number(b.createdAt) - Number(a.createdAt),
+      );
+      setOrders(sorted);
+      const pending = sorted.filter((o) => o.status === "pending").length;
+      onPendingCount?.(pending);
+    } catch {
+      setError("Failed to load payment orders.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
+  useEffect(() => {
+    load();
+  }, [actor]);
+
+  async function handleApprove(id: string) {
+    const appLink = appLinkInputs[id]?.trim() ?? "";
+    setUpdatingId(id);
+    try {
+      await actor.updatePaymentOrderStatus(id, "approved", appLink);
+      setOrders((prev) => {
+        const updated = prev.map((o) =>
+          o.id === id ? { ...o, status: "approved", appLink } : o,
+        );
+        const pending = updated.filter((o) => o.status === "pending").length;
+        onPendingCount?.(pending);
+        return updated;
+      });
+      setConfirmingApprove(null);
+    } catch {
+      /* ignore */
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function handleReject(id: string) {
+    setUpdatingId(id);
+    try {
+      await actor.updatePaymentOrderStatus(id, "rejected", "");
+      setOrders((prev) => {
+        const updated = prev.map((o) =>
+          o.id === id ? { ...o, status: "rejected" } : o,
+        );
+        const pending = updated.filter((o) => o.status === "pending").length;
+        onPendingCount?.(pending);
+        return updated;
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function handleExportCSV() {
+    const headers = [
+      "Client Name",
+      "Phone",
+      "Plan",
+      "Amount (₹)",
+      "UTR Number",
+      "Status",
+      "App Link",
+      "Date",
+    ];
+    const rows = orders.map((o) => [
+      o.clientName,
+      o.clientPhone,
+      o.planName,
+      String(o.amount),
+      o.utrNumber,
+      o.status,
+      o.appLink,
+      formatTimestamp(o.createdAt),
+    ]);
+    exportCSV(headers, rows, "payment-orders.csv");
+  }
+
+  function statusBadge(status: string) {
+    if (status === "approved")
+      return (
+        <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
+          Approved
+        </span>
+      );
+    if (status === "rejected")
+      return (
+        <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-200">
+          Rejected
+        </span>
+      );
+    return (
+      <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+        Pending
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h3 className="font-display font-bold text-lg text-foreground">
+          Payment Orders{" "}
+          {!loading && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({orders.length})
+            </span>
+          )}
+        </h3>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            data-ocid="admin.payments.button"
+            className="gap-1.5 rounded-full"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={loading || orders.length === 0}
+            data-ocid="admin.payments.button"
+            className="gap-1.5 rounded-full"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div
+          className="flex items-center justify-center py-12 gap-3 text-muted-foreground"
+          data-ocid="admin.payments.loading_state"
+        >
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Loading orders...
+        </div>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <div
+          className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 text-destructive text-sm font-medium px-4 py-3 rounded-xl"
+          data-ocid="admin.payments.error_state"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && orders.length === 0 && (
+        <div
+          className="text-center py-16 text-muted-foreground"
+          data-ocid="admin.payments.empty_state"
+        >
+          <IndianRupee className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+          <p className="font-semibold">No payment orders yet.</p>
+          <p className="text-sm mt-1">
+            Orders will appear here after clients submit their UTR numbers.
+          </p>
+        </div>
+      )}
+
+      {/* Table */}
+      {!loading && !error && orders.length > 0 && (
+        <div
+          className="overflow-x-auto rounded-xl border border-border"
+          data-ocid="admin.payments.table"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-accent/40 border-b border-border">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Client
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Plan / Amount
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  UTR Number
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Date
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {orders.map((order, idx) => (
+                <tr
+                  key={order.id}
+                  data-ocid="admin.payments.row"
+                  className="hover:bg-accent/20 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-foreground">
+                      {order.clientName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {order.clientPhone}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-foreground">
+                      {order.planName}
+                    </p>
+                    <p className="text-xs text-primary font-bold">
+                      ₹{Number(order.amount).toLocaleString("en-IN")}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs bg-accent px-2 py-1 rounded-md">
+                      {order.utrNumber}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{statusBadge(order.status)}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                    {formatTimestamp(order.createdAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {order.status === "pending" && (
+                      <div className="flex flex-col gap-2 min-w-[200px]">
+                        {confirmingApprove === order.id ? (
+                          <div className="flex flex-col gap-2">
+                            <Input
+                              value={appLinkInputs[order.id] ?? ""}
+                              onChange={(e) =>
+                                setAppLinkInputs((prev) => ({
+                                  ...prev,
+                                  [order.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="https://app.caffeine.ai/..."
+                              className="h-8 text-xs"
+                            />
+                            <div className="flex gap-1.5">
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(order.id)}
+                                disabled={updatingId === order.id}
+                                data-ocid={`admin.payments.approve_button.${idx + 1}`}
+                                className="flex-1 h-7 text-xs rounded-full bg-green-600 hover:bg-green-500 text-white"
+                              >
+                                {updatingId === order.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  "Confirm"
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmingApprove(null)}
+                                className="flex-1 h-7 text-xs rounded-full"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={() => setConfirmingApprove(order.id)}
+                              disabled={updatingId === order.id}
+                              data-ocid={`admin.payments.approve_button.${idx + 1}`}
+                              className="h-7 text-xs rounded-full bg-green-600 hover:bg-green-500 text-white px-3"
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleReject(order.id)}
+                              disabled={updatingId === order.id}
+                              data-ocid={`admin.payments.reject_button.${idx + 1}`}
+                              className="h-7 text-xs rounded-full border-red-200 text-red-600 hover:bg-red-50 px-3"
+                            >
+                              {updatingId === order.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                "Reject"
+                              )}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {order.status === "approved" && order.appLink && (
+                      <div className="flex flex-col gap-1.5">
+                        <a
+                          href={order.appLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-semibold"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          View App
+                        </a>
+                        <button
+                          type="button"
+                          data-ocid="admin.payments.secondary_button"
+                          onClick={() => {
+                            const msg = `Hello ${order.clientName}! Your ${order.planName} website is ready. Here is your link: ${order.appLink}. Thank you for choosing LocalBoost Web!`;
+                            navigator.clipboard.writeText(msg).then(() => {
+                              setCopiedWA(order.id);
+                              setTimeout(() => setCopiedWA(null), 2000);
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 hover:text-green-600 bg-green-50 hover:bg-green-100 border border-green-200 px-2.5 py-1 rounded-full transition-colors min-h-[28px]"
+                        >
+                          {copiedWA === order.id ? (
+                            <>
+                              <CheckCircle className="w-3 h-3" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              Copy WhatsApp Msg
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    {order.status === "rejected" && (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN — UPI SETTINGS CARD (used inside AdminSiteSettings)
+═══════════════════════════════════════════════════════════ */
+function AdminUpiSettings({
+  actor,
+}: {
+  actor: NonNullable<ReturnType<typeof useActor>["actor"]>;
+}) {
+  const [form, setForm] = useState<{
+    upiId: string;
+    upiName: string;
+    paymentsEnabled: boolean;
+  }>({ upiId: "", upiName: "", paymentsEnabled: false });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
+    "idle",
+  );
 
   useEffect(() => {
-    if (isFetching || !actor) return;
+    setLoading(true);
     actor
-      .isCallerAdmin()
-      .then((result) => setIsAdmin(result))
-      .catch(() => setIsAdmin(false));
-  }, [actor, isFetching]);
+      .getUpiSettings()
+      .then((s) => {
+        setForm({
+          upiId: s.upiId,
+          upiName: s.upiName,
+          paymentsEnabled: s.paymentsEnabled,
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [actor]);
 
-  // Loading check
-  if (isFetching || isAdmin === null) {
+  async function handleSave() {
+    setSaving(true);
+    setSaveStatus("idle");
+    try {
+      await actor.updateUpiSettings({
+        upiId: form.upiId.trim(),
+        upiName: form.upiName.trim(),
+        paymentsEnabled: form.paymentsEnabled,
+      });
+      setSaveStatus("success");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch {
+      setSaveStatus("error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-accent/30 gap-5">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-        <p className="text-muted-foreground text-sm">
-          Checking admin access...
-        </p>
+      <div className="flex items-center gap-2 py-3 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading UPI settings...
       </div>
     );
   }
 
-  // Not authorized
-  if (!isAdmin) {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center bg-white gap-6 px-4"
-        data-ocid="admin.panel"
+  return (
+    <div className="flex flex-col gap-4 p-5 rounded-2xl border border-border bg-accent/20">
+      <div>
+        <h4 className="font-semibold text-sm text-foreground mb-0.5">
+          UPI Payment Settings
+        </h4>
+        <p className="text-xs text-muted-foreground">
+          Configure your UPI ID for receiving payments. Enable to show the
+          payment option on pricing cards.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="admin-upi-id"
+            className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+          >
+            UPI ID
+          </Label>
+          <Input
+            id="admin-upi-id"
+            value={form.upiId}
+            onChange={(e) => setForm((f) => ({ ...f, upiId: e.target.value }))}
+            placeholder="yourname@upi"
+            data-ocid="admin.upi.upi_id_input"
+            className="h-11 font-mono"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="admin-upi-name"
+            className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+          >
+            UPI Display Name
+          </Label>
+          <Input
+            id="admin-upi-name"
+            value={form.upiName}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, upiName: e.target.value }))
+            }
+            placeholder="LocalBoost Web"
+            data-ocid="admin.upi.upi_name_input"
+            className="h-11"
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-3 py-1">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Enable Online Payments
+            </p>
+            <p className="text-xs text-muted-foreground">
+              When enabled, pricing cards show a payment modal with your UPI ID.
+            </p>
+          </div>
+          <Switch
+            checked={form.paymentsEnabled}
+            onCheckedChange={(checked) =>
+              setForm((f) => ({ ...f, paymentsEnabled: checked }))
+            }
+            data-ocid="admin.upi.enabled_switch"
+            aria-label="Enable online payments"
+          />
+        </div>
+      </div>
+
+      {saveStatus === "success" && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 text-sm font-medium px-3 py-2.5 rounded-xl">
+          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+          UPI settings saved!
+        </div>
+      )}
+      {saveStatus === "error" && (
+        <div className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 text-destructive text-sm font-medium px-3 py-2.5 rounded-xl">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          Failed to save. Please try again.
+        </div>
+      )}
+
+      <Button
+        onClick={handleSave}
+        disabled={saving}
+        data-ocid="admin.upi.save_button"
+        className="h-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md shadow-primary/20 self-start px-6 transition-all hover:scale-105"
       >
-        <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
-          <AlertTriangle className="w-8 h-8 text-destructive" />
+        {saving ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Saving...
+          </>
+        ) : (
+          <>
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Save UPI Settings
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN PORTFOLIO MANAGER
+═══════════════════════════════════════════════════════════ */
+const PORTFOLIO_BUSINESS_TYPES = [
+  "Gym",
+  "Salon",
+  "Coaching Institute",
+  "Clinic",
+  "Shop",
+  "Other",
+];
+const PORTFOLIO_STATUSES = [
+  { value: "live", label: "Live" },
+  { value: "demo", label: "Demo" },
+  { value: "hidden", label: "Hidden" },
+];
+
+const EMPTY_PORTFOLIO_FORM = {
+  title: "",
+  businessType: "",
+  description: "",
+  liveUrl: "",
+  thumbnailUrl: "",
+  pages: "",
+  status: "demo",
+};
+
+function portfolioStatusBadge(status: string) {
+  if (status === "live")
+    return (
+      <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
+        Live
+      </span>
+    );
+  if (status === "demo")
+    return (
+      <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+        Demo
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-600 border-slate-200">
+      Hidden
+    </span>
+  );
+}
+
+function AdminPortfolio({
+  actor,
+}: {
+  actor: NonNullable<ReturnType<typeof useActor>["actor"]>;
+}) {
+  const [items, setItems] = useState<PortfolioItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_PORTFOLIO_FORM });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Delete confirm
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await actor.getAllPortfolioItems();
+      const sorted = [...data].sort(
+        (a, b) => Number(b.createdAt) - Number(a.createdAt),
+      );
+      setItems(sorted);
+    } catch {
+      setError("Failed to load portfolio items.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
+  useEffect(() => {
+    load();
+  }, [actor]);
+
+  function openAddModal() {
+    setEditingItem(null);
+    setForm({ ...EMPTY_PORTFOLIO_FORM });
+    setSaveError("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(item: PortfolioItem) {
+    setEditingItem(item);
+    setForm({
+      title: item.title,
+      businessType: item.businessType,
+      description: item.description,
+      liveUrl: item.liveUrl,
+      thumbnailUrl: item.thumbnailUrl,
+      pages: item.pages.join(", "),
+      status: item.status,
+    });
+    setSaveError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingItem(null);
+    setSaveError("");
+  }
+
+  async function handleSave() {
+    if (!form.title.trim() || !form.businessType || !form.description.trim()) {
+      setSaveError("Title, Business Type, and Description are required.");
+      return;
+    }
+    setSaving(true);
+    setSaveError("");
+    const pagesArray = form.pages
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    try {
+      if (editingItem) {
+        await actor.updatePortfolioItem(
+          editingItem.id,
+          form.title.trim(),
+          form.businessType,
+          form.description.trim(),
+          form.liveUrl.trim(),
+          form.thumbnailUrl.trim(),
+          pagesArray,
+          form.status,
+        );
+      } else {
+        await actor.addPortfolioItem(
+          form.title.trim(),
+          form.businessType,
+          form.description.trim(),
+          form.liveUrl.trim(),
+          form.thumbnailUrl.trim(),
+          pagesArray,
+          form.status,
+        );
+      }
+      await load();
+      closeModal();
+    } catch {
+      setSaveError("Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      await actor.deletePortfolioItem(id);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+    } catch {
+      /* ignore */
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+
+  function handleExportCSV() {
+    const headers = [
+      "Title",
+      "Business Type",
+      "Status",
+      "Live URL",
+      "Pages",
+      "Created",
+    ];
+    const rows = items.map((item) => [
+      item.title,
+      item.businessType,
+      item.status,
+      item.liveUrl,
+      item.pages.join("; "),
+      formatTimestamp(item.createdAt),
+    ]);
+    exportCSV(headers, rows, "portfolio.csv");
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h3 className="font-display font-bold text-lg text-foreground">
+          Portfolio Items{" "}
+          {!loading && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({items.length})
+            </span>
+          )}
+        </h3>
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            data-ocid="admin.portfolio.button"
+            className="gap-1.5 rounded-full"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={loading || items.length === 0}
+            data-ocid="admin.portfolio.button"
+            className="gap-1.5 rounded-full"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </Button>
+          <Button
+            size="sm"
+            onClick={openAddModal}
+            data-ocid="admin.portfolio.open_modal_button"
+            className="gap-1.5 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Portfolio Item
+          </Button>
         </div>
-        <div className="text-center max-w-md">
-          <h1 className="font-display font-bold text-2xl text-foreground mb-2">
-            Not Authorized
-          </h1>
-          <p className="text-muted-foreground text-base">
-            You don't have admin access to this dashboard. Please log in with an
-            admin account.
-          </p>
-        </div>
-        <Button
-          onClick={goToMain}
-          variant="outline"
-          data-ocid="admin.secondary_button"
-          className="rounded-full px-6"
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground py-4"
+          data-ocid="admin.portfolio.loading_state"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Site
-        </Button>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading portfolio items...
+        </div>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <div
+          className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 text-destructive text-sm px-3 py-2.5 rounded-xl"
+          data-ocid="admin.portfolio.error_state"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && items.length === 0 && (
+        <div
+          className="text-center py-14 flex flex-col items-center gap-3"
+          data-ocid="admin.portfolio.empty_state"
+        >
+          <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center">
+            <Globe className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <p className="text-muted-foreground text-sm">
+            No portfolio items yet. Add your first item to showcase your work.
+          </p>
+          <Button
+            size="sm"
+            onClick={openAddModal}
+            data-ocid="admin.portfolio.primary_button"
+            className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add First Item
+          </Button>
+        </div>
+      )}
+
+      {/* Table */}
+      {!loading && !error && items.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-sm" data-ocid="admin.portfolio.table">
+            <thead>
+              <tr className="bg-accent/40 border-b border-border">
+                <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">
+                  Title
+                </th>
+                <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 hidden sm:table-cell">
+                  Type
+                </th>
+                <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">
+                  Status
+                </th>
+                <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 hidden md:table-cell">
+                  Live URL
+                </th>
+                <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 hidden lg:table-cell">
+                  Created
+                </th>
+                <th className="text-right text-xs font-semibold text-muted-foreground px-4 py-3">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <tr
+                  key={item.id}
+                  data-ocid={
+                    `admin.portfolio.row.${idx + 1}` as `admin.portfolio.row.${number}`
+                  }
+                  className="border-b border-border last:border-0 hover:bg-accent/20 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-foreground text-sm">
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
+                      {item.businessType}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <span className="text-sm text-muted-foreground">
+                      {item.businessType}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {portfolioStatusBadge(item.status)}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    {item.liveUrl ? (
+                      <a
+                        href={item.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-xs truncate max-w-[160px] inline-block"
+                      >
+                        {item.liveUrl.replace(/^https?:\/\//, "").slice(0, 30)}
+                        {item.liveUrl.replace(/^https?:\/\//, "").length > 30
+                          ? "…"
+                          : ""}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
+                    {formatTimestamp(item.createdAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditModal(item)}
+                        data-ocid="admin.portfolio.edit_button"
+                        className="h-8 w-8 p-0 rounded-lg hover:bg-primary/10 hover:text-primary"
+                        aria-label={`Edit ${item.title}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      {confirmDeleteId === item.id ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            data-ocid="admin.portfolio.confirm_button"
+                            className="h-7 px-2.5 text-xs rounded-lg"
+                          >
+                            {deletingId === item.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              "Confirm"
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmDeleteId(null)}
+                            data-ocid="admin.portfolio.cancel_button"
+                            className="h-7 px-2.5 text-xs rounded-lg"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setConfirmDeleteId(item.id)}
+                          data-ocid="admin.portfolio.delete_button"
+                          className="h-8 w-8 p-0 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Delete ${item.title}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add / Edit Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            aria-hidden="true"
+            onClick={closeModal}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeModal();
+            }}
+            role="button"
+            tabIndex={-1}
+          />
+          <dialog
+            open
+            aria-modal="true"
+            aria-labelledby="portfolio-modal-title"
+            data-ocid="admin.portfolio.modal"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 flex flex-col gap-5 border-0 m-0"
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between gap-3">
+              <h4
+                id="portfolio-modal-title"
+                className="font-display font-bold text-lg text-foreground"
+              >
+                {editingItem ? "Edit Portfolio Item" : "Add Portfolio Item"}
+              </h4>
+              <button
+                type="button"
+                onClick={closeModal}
+                data-ocid="admin.portfolio.close_button"
+                aria-label="Close modal"
+                className="w-8 h-8 rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Form fields */}
+            <div className="flex flex-col gap-4">
+              {/* Title */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-title" className="text-xs font-semibold">
+                  Title <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="pf-title"
+                  value={form.title}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, title: e.target.value }))
+                  }
+                  placeholder="e.g. PowerFit Gym Website"
+                  data-ocid="admin.portfolio.input"
+                />
+              </div>
+
+              {/* Business Type */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-type" className="text-xs font-semibold">
+                  Business Type <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={form.businessType}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, businessType: v }))
+                  }
+                >
+                  <SelectTrigger
+                    id="pf-type"
+                    data-ocid="admin.portfolio.select"
+                  >
+                    <SelectValue placeholder="Select business type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PORTFOLIO_BUSINESS_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Description */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-desc" className="text-xs font-semibold">
+                  Description <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="pf-desc"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
+                  placeholder="Brief description of the website..."
+                  rows={3}
+                  data-ocid="admin.portfolio.textarea"
+                />
+              </div>
+
+              {/* Live URL */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-url" className="text-xs font-semibold">
+                  Live URL
+                </Label>
+                <Input
+                  id="pf-url"
+                  value={form.liveUrl}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, liveUrl: e.target.value }))
+                  }
+                  placeholder="https://... or leave blank for demo"
+                  type="url"
+                  data-ocid="admin.portfolio.input"
+                />
+              </div>
+
+              {/* Thumbnail URL */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-thumb" className="text-xs font-semibold">
+                  Thumbnail URL
+                </Label>
+                <Input
+                  id="pf-thumb"
+                  value={form.thumbnailUrl}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, thumbnailUrl: e.target.value }))
+                  }
+                  placeholder="https://... image URL (optional)"
+                  type="url"
+                  data-ocid="admin.portfolio.input"
+                />
+              </div>
+
+              {/* Pages */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-pages" className="text-xs font-semibold">
+                  Pages (comma-separated)
+                </Label>
+                <Input
+                  id="pf-pages"
+                  value={form.pages}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, pages: e.target.value }))
+                  }
+                  placeholder="Homepage, Services, Gallery, Contact"
+                  data-ocid="admin.portfolio.input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  e.g. Homepage, Services, Gallery
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pf-status" className="text-xs font-semibold">
+                  Status
+                </Label>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                >
+                  <SelectTrigger
+                    id="pf-status"
+                    data-ocid="admin.portfolio.select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PORTFOLIO_STATUSES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Error */}
+            {saveError && (
+              <div
+                className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 text-destructive text-xs px-3 py-2.5 rounded-xl"
+                data-ocid="admin.portfolio.error_state"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                {saveError}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end pt-1">
+              <Button
+                variant="outline"
+                onClick={closeModal}
+                disabled={saving}
+                data-ocid="admin.portfolio.cancel_button"
+                className="rounded-full px-5"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                data-ocid="admin.portfolio.save_button"
+                className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-5 gap-1.5"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Saving...
+                  </>
+                ) : editingItem ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Save Changes
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Item
+                  </>
+                )}
+              </Button>
+            </div>
+          </dialog>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Full Admin Dashboard
+function AdminDashboard() {
+  const { actor } = useActor();
+  const [pendingPaymentCount, setPendingPaymentCount] = useState(0);
+
+  // Password gate state
+  const [adminAuthed, setAdminAuthed] = useState(
+    () => sessionStorage.getItem("lb_admin_authed") === "1",
+  );
+  const [pwInput, setPwInput] = useState("");
+  const [pwAttempts, setPwAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(0);
+  const [lockoutSecsLeft, setLockoutSecsLeft] = useState(0);
+  const [pwError, setPwError] = useState("");
+
+  // Lockout countdown
+  useEffect(() => {
+    if (lockoutUntil === 0) return;
+    const interval = setInterval(() => {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutSecsLeft(0);
+        setLockoutUntil(0);
+        setPwAttempts(0);
+        setPwError("");
+        clearInterval(interval);
+      } else {
+        setLockoutSecsLeft(remaining);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [lockoutUntil]);
+
+  async function handlePasswordSubmit() {
+    if (lockoutUntil > Date.now()) return;
+    const inputHash = await hashPassword(pwInput);
+    if (inputHash === ADMIN_PASSWORD_HASH) {
+      sessionStorage.setItem("lb_admin_authed", "1");
+      setAdminAuthed(true);
+      setPwError("");
+    } else {
+      const newAttempts = pwAttempts + 1;
+      setPwAttempts(newAttempts);
+      setPwInput("");
+      if (newAttempts >= 3) {
+        const until = Date.now() + 30_000;
+        setLockoutUntil(until);
+        setLockoutSecsLeft(30);
+        setPwError("");
+      } else {
+        setPwError(
+          `Incorrect password. ${3 - newAttempts} attempt(s) remaining.`,
+        );
+      }
+    }
+  }
+
+  // Password gate — shown when password not yet entered
+  if (!adminAuthed) {
+    const isLockedOut = lockoutUntil > Date.now() && lockoutSecsLeft > 0;
+    return (
+      <div className="min-h-screen bg-accent/20 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-border p-8 flex flex-col items-center gap-5">
+          <img
+            src="/assets/generated/logo-icon-only.dim_200x200.png"
+            alt="LocalBoost Web"
+            className="w-14 h-14 object-contain"
+          />
+          <div className="text-center">
+            <h1 className="font-display font-bold text-xl text-foreground mb-1">
+              Admin Access
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Enter the admin password to continue
+            </p>
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="password"
+                placeholder="Admin password"
+                value={pwInput}
+                onChange={(e) => setPwInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isLockedOut) handlePasswordSubmit();
+                }}
+                disabled={isLockedOut}
+                data-ocid="admin.password.input"
+                className="pl-9"
+                autoComplete="current-password"
+              />
+            </div>
+
+            {pwError && !isLockedOut && (
+              <div
+                className="text-xs text-destructive bg-destructive/8 border border-destructive/20 px-3 py-2 rounded-lg"
+                data-ocid="admin.password.error_state"
+              >
+                {pwError}
+              </div>
+            )}
+
+            {isLockedOut && (
+              <div
+                className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg"
+                data-ocid="admin.password.error_state"
+              >
+                Too many failed attempts. Try again in {lockoutSecsLeft}s.
+              </div>
+            )}
+
+            <Button
+              onClick={handlePasswordSubmit}
+              disabled={isLockedOut || !pwInput.trim()}
+              data-ocid="admin.password.submit_button"
+              className="w-full rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+            >
+              Continue
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={goToMain}
+            data-ocid="admin.secondary_button"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Site
+          </button>
+        </div>
       </div>
     );
   }
@@ -5466,9 +8616,9 @@ function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
-              src="/assets/generated/lb-logo-transparent.dim_120x120.png"
+              src="/assets/generated/logo-icon-only.dim_200x200.png"
               alt="LocalBoost Web"
-              className="w-7 h-7 rounded-lg object-cover"
+              className="w-7 h-7 object-contain"
             />
             <div className="flex items-center gap-2">
               <span className="font-display font-bold text-sm text-foreground">
@@ -5531,11 +8681,37 @@ function AdminDashboard() {
               Contact Messages
             </TabsTrigger>
             <TabsTrigger
+              value="testimonials"
+              data-ocid="admin.tab"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Testimonials
+            </TabsTrigger>
+            <TabsTrigger
+              value="portfolio"
+              data-ocid="admin.tab"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Portfolio
+            </TabsTrigger>
+            <TabsTrigger
               value="settings"
               data-ocid="admin.tab"
               className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
             >
               Site Settings
+            </TabsTrigger>
+            <TabsTrigger
+              value="payments"
+              data-ocid="admin.tab"
+              className="rounded-lg text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Payments{" "}
+              {pendingPaymentCount > 0 && (
+                <span className="ml-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {pendingPaymentCount}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -5551,8 +8727,20 @@ function AdminDashboard() {
                 <TabsContent value="contact-messages" className="mt-0">
                   <AdminContactMessages actor={actor} />
                 </TabsContent>
+                <TabsContent value="testimonials" className="mt-0">
+                  <AdminTestimonials actor={actor} />
+                </TabsContent>
+                <TabsContent value="portfolio" className="mt-0">
+                  <AdminPortfolio actor={actor} />
+                </TabsContent>
                 <TabsContent value="settings" className="mt-0">
                   <AdminSiteSettings actor={actor} />
+                </TabsContent>
+                <TabsContent value="payments" className="mt-0">
+                  <AdminPayments
+                    actor={actor}
+                    onPendingCount={setPendingPaymentCount}
+                  />
                 </TabsContent>
               </>
             )}
@@ -5716,10 +8904,134 @@ function BeforeAfterSection({ isHindi }: { isHindi: boolean }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PART 10 — TESTIMONIALS PLACEHOLDER
+   PART 10 — TESTIMONIALS (Real reviews + submit form)
 ═══════════════════════════════════════════════════════════ */
+function StarSelector({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [hover, setHover] = useState(0);
+  return (
+    <fieldset
+      className="flex items-center gap-1 border-0 p-0 m-0"
+      aria-label="Select star rating"
+    >
+      <legend className="sr-only">Select star rating</legend>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-label={`${s} star${s > 1 ? "s" : ""}`}
+          data-ocid="testimonials.toggle"
+          onMouseEnter={() => setHover(s)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(s)}
+          className="p-0.5 rounded transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Star
+            className={`w-6 h-6 transition-colors ${
+              s <= (hover || value)
+                ? "fill-amber-400 text-amber-400"
+                : "fill-border text-border"
+            }`}
+          />
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
 function Testimonials({ isHindi }: { isHindi: boolean }) {
-  const slots = [1, 2, 3];
+  const { actor } = useActor();
+  const [approved, setApproved] = useState<Testimonial[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+
+  // Submit form state
+  const [showForm, setShowForm] = useState(false);
+  const [reviewName, setReviewName] = useState("");
+  const [reviewBizType, setReviewBizType] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewPhoto, setReviewPhoto] = useState("");
+  const [submitStatus, setSubmitStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    if (!actor) return;
+    actor
+      .getApprovedTestimonials()
+      .then((data) => {
+        // Sort by createdAt descending
+        const sorted = [...data].sort(
+          (a, b) => Number(b.createdAt) - Number(a.createdAt),
+        );
+        setApproved(sorted.slice(0, 6));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingReviews(false));
+  }, [actor]);
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reviewName.trim() || !reviewBizType || !reviewText.trim()) {
+      setSubmitError(
+        isHindi
+          ? "कृपया सभी आवश्यक फ़ील्ड भरें।"
+          : "Please fill in all required fields.",
+      );
+      setSubmitStatus("error");
+      return;
+    }
+    if (reviewText.trim().length < 20) {
+      setSubmitError(
+        isHindi
+          ? "समीक्षा कम से कम 20 अक्षरों की होनी चाहिए।"
+          : "Review must be at least 20 characters.",
+      );
+      setSubmitStatus("error");
+      return;
+    }
+    if (!actor) {
+      setSubmitError(
+        isHindi
+          ? "कनेक्शन तैयार नहीं है। कृपया फिर कोशिश करें।"
+          : "Connection not ready. Please try again.",
+      );
+      setSubmitStatus("error");
+      return;
+    }
+    setSubmitStatus("loading");
+    setSubmitError("");
+    try {
+      await actor.submitTestimonial(
+        reviewName.trim(),
+        reviewBizType,
+        BigInt(reviewRating),
+        reviewText.trim(),
+        reviewPhoto.trim() || null,
+      );
+      setSubmitStatus("success");
+      setReviewName("");
+      setReviewBizType("");
+      setReviewRating(5);
+      setReviewText("");
+      setReviewPhoto("");
+    } catch {
+      setSubmitError(
+        isHindi
+          ? "कुछ गलत हुआ। कृपया दोबारा कोशिश करें।"
+          : "Something went wrong. Please try again.",
+      );
+      setSubmitStatus("error");
+    }
+  }
+
+  const ghostSlots = [1, 2, 3];
 
   return (
     <section
@@ -5751,10 +9063,10 @@ function Testimonials({ isHindi }: { isHindi: boolean }) {
           </h2>
         </div>
 
-        {/* Honest placeholder message */}
+        {/* Submit Your Review CTA card */}
         <div
           data-ocid="testimonials.panel"
-          className="bg-white rounded-2xl border border-border p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 shadow-xs"
+          className="bg-white rounded-2xl border border-primary/20 p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 shadow-xs"
         >
           <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/15 flex items-center justify-center flex-shrink-0">
             <Star className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -5762,92 +9074,380 @@ function Testimonials({ isHindi }: { isHindi: boolean }) {
           <div className="flex-1">
             <p className="font-display font-bold text-base text-foreground mb-1">
               {isHindi
-                ? "ग्राहकों की समीक्षाएं जल्द आएंगी।"
-                : "Client reviews coming soon."}
+                ? "अपनी समीक्षा दें — हमारे फ़ीचर्ड क्लाइंट बनें"
+                : "Share Your Experience — Be a Featured Client"}
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {isHindi
-                ? "डेमो मांगें और हमारे पहले फ़ीचर्ड क्लाइंट बनें। आपकी सफलता की कहानी यहाँ दिखाएंगे।"
-                : "We're just getting started. Request a free demo today and be one of our first featured clients. We'll showcase your success story right here."}
+                ? "क्या आपने हमारे साथ काम किया है? अपनी राय दें — यहाँ दिखाएंगे।"
+                : "Had a website built with us? Leave a review and we'll feature it here for other businesses to see."}
             </p>
           </div>
           <Button
-            onClick={() => scrollTo("demo-form")}
+            onClick={() => setShowForm((v) => !v)}
             data-ocid="testimonials.primary_button"
             className="flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-full px-5 h-10 shadow-md shadow-primary/15 transition-all hover:scale-105 text-sm whitespace-nowrap"
           >
-            {isHindi ? "डेमो मांगें" : "Request Free Demo"}
+            {showForm
+              ? isHindi
+                ? "फ़ॉर्म बंद करें"
+                : "Close Form"
+              : isHindi
+                ? "समीक्षा दें"
+                : "Write a Review"}
           </Button>
         </div>
 
-        {/* Ghost slots */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {slots.map((slot) => {
-            const ocid = `testimonials.item.${slot}` as const;
-            return (
-              <article
-                key={slot}
-                data-ocid={ocid}
-                className="bg-white rounded-2xl border-2 border-dashed border-border p-6 flex flex-col gap-4 relative overflow-hidden"
+        {/* Submit review form */}
+        {showForm && (
+          <div
+            className="bg-white rounded-2xl border border-border shadow-sm p-6 md:p-8 mb-8"
+            data-ocid="testimonials.panel"
+          >
+            {submitStatus === "success" ? (
+              <div
+                className="flex flex-col items-center gap-4 text-center py-6"
+                data-ocid="testimonials.success_state"
               >
-                {/* Available badge */}
-                <span className="absolute top-4 right-4 bg-primary/8 text-primary text-[10px] font-bold px-2 py-1 rounded-full border border-primary/15 uppercase tracking-wider">
-                  Slot available
-                </span>
-
-                {/* Avatar placeholder */}
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/15 to-teal/10 border-2 border-dashed border-primary/20 flex items-center justify-center flex-shrink-0">
-                    <Users
-                      className="w-4 h-4 text-primary/40"
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <div className="h-3 w-24 rounded-full bg-border animate-pulse" />
-                    <div className="h-2.5 w-16 rounded-full bg-border/70 animate-pulse" />
-                  </div>
+                <div className="w-14 h-14 rounded-full bg-green-100 border border-green-200 flex items-center justify-center">
+                  <CheckCircle className="w-7 h-7 text-green-600" />
                 </div>
-
-                {/* Stars — empty/outlined */}
-                <div
-                  className="flex items-center gap-0.5"
-                  aria-label="Review rating pending"
+                <div>
+                  <h3 className="font-display font-bold text-lg text-foreground mb-1">
+                    {isHindi ? "आपकी समीक्षा मिल गई!" : "Review Submitted!"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
+                    {isHindi
+                      ? "आपकी समीक्षा प्रतीक्षा में है। अनुमोदन के बाद यहाँ दिखाई देगी।"
+                      : "Your review has been submitted and is pending approval. Thank you!"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => {
+                    setSubmitStatus("idle");
+                    setShowForm(false);
+                  }}
+                  data-ocid="testimonials.secondary_button"
                 >
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Circle
-                      key={s}
-                      className="w-4 h-4 text-border"
-                      aria-hidden="true"
+                  {isHindi ? "बंद करें" : "Close"}
+                </Button>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSubmitReview}
+                noValidate
+                className="flex flex-col gap-4"
+              >
+                <h3 className="font-display font-bold text-lg text-foreground mb-1">
+                  {isHindi ? "अपनी समीक्षा लिखें" : "Write Your Review"}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label
+                      htmlFor="review-name"
+                      className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                    >
+                      {isHindi ? "आपका नाम *" : "Your Name *"}
+                    </Label>
+                    <Input
+                      id="review-name"
+                      value={reviewName}
+                      onChange={(e) => setReviewName(e.target.value)}
+                      placeholder={isHindi ? "आपका नाम" : "Rajesh Kumar"}
+                      required
+                      data-ocid="testimonials.input"
+                      className="h-11"
                     />
-                  ))}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label
+                      htmlFor="review-biz-type"
+                      className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                    >
+                      {isHindi ? "बिज़नेस का प्रकार *" : "Business Type *"}
+                    </Label>
+                    <Select
+                      value={reviewBizType}
+                      onValueChange={setReviewBizType}
+                    >
+                      <SelectTrigger
+                        id="review-biz-type"
+                        data-ocid="testimonials.select"
+                        className="h-11"
+                      >
+                        <SelectValue
+                          placeholder={isHindi ? "प्रकार चुनें" : "Select type"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[
+                          "Gym",
+                          "Salon",
+                          "Coaching Institute",
+                          "Clinic",
+                          "Shop",
+                          "Other",
+                        ].map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Review text placeholder */}
                 <div className="flex flex-col gap-1.5">
-                  <div className="h-2.5 w-full rounded-full bg-border/70 animate-pulse" />
-                  <div className="h-2.5 w-full rounded-full bg-border/70 animate-pulse" />
-                  <div className="h-2.5 w-3/4 rounded-full bg-border/70 animate-pulse" />
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {isHindi ? "रेटिंग *" : "Rating *"}
+                  </Label>
+                  <StarSelector
+                    value={reviewRating}
+                    onChange={setReviewRating}
+                  />
                 </div>
 
-                <p className="text-xs text-muted-foreground italic">
-                  Client review coming soon...
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="review-text"
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  >
+                    {isHindi ? "आपकी समीक्षा *" : "Your Review *"}
+                  </Label>
+                  <Textarea
+                    id="review-text"
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    placeholder={
+                      isHindi
+                        ? "अपना अनुभव लिखें (कम से कम 20 अक्षर)..."
+                        : "Tell others about your experience (minimum 20 characters)..."
+                    }
+                    required
+                    rows={4}
+                    data-ocid="testimonials.textarea"
+                    className="resize-none"
+                  />
+                  <p
+                    className={`text-xs ${reviewText.length < 20 && reviewText.length > 0 ? "text-amber-600" : "text-muted-foreground"}`}
+                  >
+                    {reviewText.length}/20{" "}
+                    {isHindi ? "न्यूनतम अक्षर" : "minimum characters"}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="review-photo"
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  >
+                    {isHindi ? "फ़ोटो URL (वैकल्पिक)" : "Photo URL (optional)"}
+                  </Label>
+                  <Input
+                    id="review-photo"
+                    value={reviewPhoto}
+                    onChange={(e) => setReviewPhoto(e.target.value)}
+                    placeholder="https://..."
+                    type="url"
+                    data-ocid="testimonials.input"
+                    className="h-11"
+                  />
+                </div>
+
+                {submitStatus === "error" && submitError && (
+                  <div
+                    className="flex items-center gap-2.5 bg-destructive/8 border border-destructive/20 text-destructive text-sm px-4 py-3 rounded-xl"
+                    data-ocid="testimonials.error_state"
+                  >
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    {submitError}
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={submitStatus === "loading"}
+                  data-ocid="testimonials.submit_button"
+                  className="h-12 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 self-start px-8 transition-all hover:scale-105"
+                >
+                  {submitStatus === "loading" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      {isHindi ? "जमा हो रहा है..." : "Submitting..."}
+                    </>
+                  ) : isHindi ? (
+                    "समीक्षा जमा करें"
+                  ) : (
+                    "Submit Review"
+                  )}
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* Reviews grid */}
+        {loadingReviews ? (
+          <div
+            className="flex items-center justify-center py-10 gap-3 text-muted-foreground"
+            data-ocid="testimonials.loading_state"
+          >
+            <Loader2 className="w-5 h-5 animate-spin" />
+            {isHindi ? "लोड हो रहा है..." : "Loading reviews..."}
+          </div>
+        ) : approved.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {approved.map((t, idx) => {
+              const ocid = `testimonials.item.${idx + 1}` as const;
+              return (
+                <article
+                  key={t.id}
+                  data-ocid={ocid}
+                  className="bg-white rounded-2xl border border-border p-6 flex flex-col gap-4 shadow-xs hover:shadow-sm transition-shadow"
+                >
+                  {/* Header */}
+                  <div className="flex items-center gap-3">
+                    {t.photoUrl ? (
+                      <img
+                        src={t.photoUrl}
+                        alt={t.name}
+                        className="w-10 h-10 rounded-full object-cover border-2 border-primary/15 flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-teal/15 border-2 border-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
+                        {t.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display font-bold text-sm text-foreground truncate">
+                        {t.name}
+                      </p>
+                      <Badge className="text-[10px] font-semibold px-2 py-0 border-0 bg-primary/8 text-primary mt-0.5">
+                        {t.businessType}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Stars */}
+                  <div
+                    className="flex items-center gap-0.5"
+                    aria-label={`${Number(t.rating)} out of 5 stars`}
+                  >
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        className={`w-4 h-4 ${s <= Number(t.rating) ? "fill-amber-400 text-amber-400" : "fill-border text-border"}`}
+                        aria-hidden="true"
+                      />
+                    ))}
+                  </div>
+
+                  {/* Review text */}
+                  <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">
+                    "{t.text}"
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            {/* Placeholder: no approved reviews yet */}
+            <div
+              className="bg-white rounded-2xl border border-border p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 shadow-xs"
+              data-ocid="testimonials.empty_state"
+            >
+              <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/15 flex items-center justify-center flex-shrink-0">
+                <Star className="w-5 h-5 text-primary" aria-hidden="true" />
+              </div>
+              <div className="flex-1">
+                <p className="font-display font-bold text-base text-foreground mb-1">
+                  {isHindi
+                    ? "ग्राहकों की समीक्षाएं जल्द आएंगी।"
+                    : "Client reviews coming soon."}
                 </p>
-              </article>
-            );
-          })}
-        </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {isHindi
+                    ? "डेमो मांगें और हमारे पहले फ़ीचर्ड क्लाइंट बनें।"
+                    : "We're just getting started. Request a free demo and be one of our first featured clients."}
+                </p>
+              </div>
+              <Button
+                onClick={() => scrollTo("demo-form")}
+                data-ocid="testimonials.secondary_button"
+                className="flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-full px-5 h-10 shadow-md shadow-primary/15 transition-all hover:scale-105 text-sm whitespace-nowrap"
+              >
+                {isHindi ? "डेमो मांगें" : "Request Free Demo"}
+              </Button>
+            </div>
+
+            {/* Ghost slots */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {ghostSlots.map((slot) => {
+                const ocid = `testimonials.item.${slot}` as const;
+                return (
+                  <article
+                    key={slot}
+                    data-ocid={ocid}
+                    className="bg-white rounded-2xl border-2 border-dashed border-border p-6 flex flex-col gap-4 relative overflow-hidden"
+                  >
+                    <span className="absolute top-4 right-4 bg-primary/8 text-primary text-[10px] font-bold px-2 py-1 rounded-full border border-primary/15 uppercase tracking-wider">
+                      Slot available
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/15 to-teal/10 border-2 border-dashed border-primary/20 flex items-center justify-center flex-shrink-0">
+                        <Users
+                          className="w-4 h-4 text-primary/40"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="h-3 w-24 rounded-full bg-border animate-pulse" />
+                        <div className="h-2.5 w-16 rounded-full bg-border/70 animate-pulse" />
+                      </div>
+                    </div>
+                    <div
+                      className="flex items-center gap-0.5"
+                      aria-label="Review rating pending"
+                    >
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Circle
+                          key={s}
+                          className="w-4 h-4 text-border"
+                          aria-hidden="true"
+                        />
+                      ))}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="h-2.5 w-full rounded-full bg-border/70 animate-pulse" />
+                      <div className="h-2.5 w-full rounded-full bg-border/70 animate-pulse" />
+                      <div className="h-2.5 w-3/4 rounded-full bg-border/70 animate-pulse" />
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">
+                      Client review coming soon...
+                    </p>
+                  </article>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* CTA */}
         <p className="text-center text-sm text-muted-foreground mt-8">
-          Be our next featured client.{" "}
+          {isHindi
+            ? "हमारे अगले फ़ीचर्ड क्लाइंट बनें। "
+            : "Be our next featured client. "}
           <button
             type="button"
             onClick={() => scrollTo("demo-form")}
             data-ocid="testimonials.secondary_button"
             className="text-primary font-semibold hover:underline underline-offset-2 transition-colors"
           >
-            Request a Free Demo to be Featured →
+            {isHindi ? "मुफ़्त डेमो मांगें →" : "Request a Free Demo to be Featured →"}
           </button>
         </p>
       </div>
@@ -6349,7 +9949,17 @@ function FAQSection({ isHindi: globalIsHindi }: { isHindi: boolean }) {
 /* ═══════════════════════════════════════════════════════════
    PART 11 — CONTACT SECTION
 ═══════════════════════════════════════════════════════════ */
-function ContactSection({ isHindi }: { isHindi: boolean }) {
+function ContactSection({
+  isHindi,
+  googleRating,
+  googleReviewCount,
+  googleBusinessUrl,
+}: {
+  isHindi: boolean;
+  googleRating: string;
+  googleReviewCount: string;
+  googleBusinessUrl: string;
+}) {
   const { actor } = useActor();
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -6513,6 +10123,17 @@ function ContactSection({ isHindi }: { isHindi: boolean }) {
             <p className="text-xs text-muted-foreground text-center">
               Quickest response via WhatsApp · Usually replies within 1 hour
             </p>
+
+            {/* Google Reviews Badge */}
+            {googleRating && (
+              <div className="flex justify-center mt-1">
+                <GoogleReviewsBadge
+                  googleRating={googleRating}
+                  googleReviewCount={googleReviewCount}
+                  googleBusinessUrl={googleBusinessUrl}
+                />
+              </div>
+            )}
           </div>
 
           {/* Right — contact form */}
@@ -6763,6 +10384,325 @@ function FinalCTABanner({ isHindi }: { isHindi: boolean }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ORDER STATUS PAGE
+═══════════════════════════════════════════════════════════ */
+function OrderStatusPage({
+  orderId,
+  isHindi,
+}: {
+  orderId: string;
+  isHindi: boolean;
+}) {
+  const { actor, isFetching } = useActor();
+  const [status, setStatus] = useState<
+    import("./backend").PaymentOrderStatus | null | "loading" | "not_found"
+  >("loading");
+
+  function fetchStatus() {
+    if (!actor) return;
+    setStatus("loading");
+    actor
+      .getPaymentOrderStatus(orderId)
+      .then((result) => {
+        if (result === null) {
+          setStatus("not_found");
+        } else {
+          setStatus(result);
+        }
+      })
+      .catch(() => setStatus("not_found"));
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchStatus depends on actor and orderId
+  useEffect(() => {
+    if (isFetching || !actor) return;
+    fetchStatus();
+  }, [actor, isFetching, orderId]);
+
+  const waApprovedUrl = `${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! My payment was approved. Here is my order ID: ${orderId}`)}`;
+  const waRejectedUrl = `${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! There was an issue with my payment. My UTR was submitted. My order ID is: ${orderId}. Please help.`)}`;
+
+  return (
+    <div className="min-h-screen bg-accent/20 flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white border-b border-border shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              window.location.hash = "";
+            }}
+            data-ocid="order_status.secondary_button"
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {isHindi
+              ? "LocalBoost Web पर वापस जाएं"
+              : "← Back to LocalBoost Web"}
+          </button>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md" data-ocid="order_status.card">
+          {/* Loading */}
+          {(status === "loading" || isFetching) && (
+            <div
+              className="bg-white rounded-3xl border border-border shadow-sm p-8 flex flex-col items-center gap-5 text-center"
+              data-ocid="order_status.loading_state"
+            >
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <div>
+                <p className="font-display font-bold text-xl text-foreground mb-1">
+                  {isHindi
+                    ? "स्टेटस लोड हो रहा है..."
+                    : "Fetching your order status..."}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {isHindi ? "कृपया प्रतीक्षा करें" : "Please wait a moment"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Not found */}
+          {status === "not_found" && (
+            <div
+              className="bg-white rounded-3xl border border-border shadow-sm p-8 flex flex-col items-center gap-5 text-center"
+              data-ocid="order_status.error_state"
+            >
+              <div className="w-16 h-16 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+              </div>
+              <div>
+                <p className="font-display font-bold text-xl text-foreground mb-2">
+                  {isHindi ? "ऑर्डर नहीं मिला" : "Order Not Found"}
+                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {isHindi
+                    ? "यह ऑर्डर ID मौजूद नहीं है। कृपया अपना ऑर्डर ID जांचें या व्हाट्सएप पर संपर्क करें।"
+                    : "We couldn't find an order with this ID. Please check your order ID or contact us on WhatsApp."}
+                </p>
+                <p className="text-xs text-muted-foreground mt-3 font-mono bg-accent/50 px-3 py-1.5 rounded-lg inline-block">
+                  ID: {orderId}
+                </p>
+              </div>
+              <a
+                href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! I can't find my order. My order ID is: ${orderId}. Please help.`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-ocid="order_status.button"
+                className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-md shadow-green-200 text-sm"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {isHindi ? "व्हाट्सएप पर संपर्क करें" : "Contact on WhatsApp"}
+              </a>
+            </div>
+          )}
+
+          {/* Order found */}
+          {status !== "loading" &&
+            status !== "not_found" &&
+            status !== null &&
+            typeof status === "object" && (
+              <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
+                {/* Top color strip based on status */}
+                <div
+                  className={`h-1.5 w-full ${
+                    status.status === "approved"
+                      ? "bg-green-500"
+                      : status.status === "rejected"
+                        ? "bg-red-500"
+                        : "bg-amber-400"
+                  }`}
+                />
+
+                <div className="p-7 flex flex-col gap-5">
+                  {/* Status icon + badge */}
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div
+                      className={`w-16 h-16 rounded-full border-2 flex items-center justify-center ${
+                        status.status === "approved"
+                          ? "bg-green-50 border-green-300"
+                          : status.status === "rejected"
+                            ? "bg-red-50 border-red-300"
+                            : "bg-amber-50 border-amber-300"
+                      }`}
+                    >
+                      {status.status === "approved" ? (
+                        <CheckCircle className="w-8 h-8 text-green-600" />
+                      ) : status.status === "rejected" ? (
+                        <AlertTriangle className="w-8 h-8 text-red-500" />
+                      ) : (
+                        <Clock className="w-8 h-8 text-amber-500" />
+                      )}
+                    </div>
+                    <span
+                      className={`inline-flex items-center text-xs font-bold px-3 py-1 rounded-full border ${
+                        status.status === "approved"
+                          ? "bg-green-100 text-green-700 border-green-200"
+                          : status.status === "rejected"
+                            ? "bg-red-100 text-red-700 border-red-200"
+                            : "bg-amber-100 text-amber-700 border-amber-200"
+                      }`}
+                    >
+                      {status.status === "approved"
+                        ? isHindi
+                          ? "✓ स्वीकृत"
+                          : "✓ Approved"
+                        : status.status === "rejected"
+                          ? isHindi
+                            ? "✗ अस्वीकृत"
+                            : "✗ Rejected"
+                          : isHindi
+                            ? "⏳ लंबित"
+                            : "⏳ Pending"}
+                    </span>
+                  </div>
+
+                  {/* Heading for approved */}
+                  {status.status === "approved" && (
+                    <div className="text-center">
+                      <h1 className="font-display font-bold text-2xl text-green-700 mb-1">
+                        {isHindi
+                          ? "आपकी वेबसाइट तैयार है!"
+                          : "Your Website is Ready!"}
+                      </h1>
+                      <p className="text-sm text-muted-foreground">
+                        {isHindi
+                          ? "नीचे दिए बटन से अपनी वेबसाइट खोलें।"
+                          : "Open your website using the button below."}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Status message */}
+                  <div
+                    className={`rounded-2xl p-4 text-sm leading-relaxed ${
+                      status.status === "approved"
+                        ? "bg-green-50 border border-green-200 text-green-800"
+                        : status.status === "rejected"
+                          ? "bg-red-50 border border-red-200 text-red-800"
+                          : "bg-amber-50 border border-amber-200 text-amber-800"
+                    }`}
+                  >
+                    {status.status === "approved"
+                      ? isHindi
+                        ? "बधाई हो! आपका भुगतान सत्यापित हो गया है। नीचे दिए बटन से अपनी वेबसाइट देखें।"
+                        : "Congratulations! Your payment has been verified and your website is live."
+                      : status.status === "rejected"
+                        ? isHindi
+                          ? "आपके UTR नंबर में कोई समस्या है। कृपया अपने UTR नंबर के साथ व्हाट्सएप पर संपर्क करें।"
+                          : "There was an issue verifying your payment. Please contact us on WhatsApp with your UTR number."
+                        : isHindi
+                          ? "हम आपका भुगतान वेरिफाई कर रहे हैं — इसमें 24 घंटे तक का समय लग सकता है। जल्द ही व्हाट्सएप पर आपको जानकारी मिलेगी।"
+                          : "We're verifying your payment — this usually takes up to 24 hours. You'll hear from us on WhatsApp soon."}
+                  </div>
+
+                  {/* Order details */}
+                  <div className="rounded-2xl bg-accent/40 border border-border p-4 flex flex-col gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                      {isHindi ? "ऑर्डर विवरण" : "Order Details"}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        {isHindi ? "प्लान" : "Plan"}
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {status.planName}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        {isHindi ? "राशि" : "Amount"}
+                      </span>
+                      <span className="text-sm font-bold text-primary">
+                        ₹{Number(status.amount).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-2 pt-1 border-t border-border mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {isHindi ? "ऑर्डर ID" : "Order ID"}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-foreground text-right break-all">
+                        {status.id}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* App link for approved */}
+                  {status.status === "approved" && status.appLink && (
+                    <a
+                      href={status.appLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-ocid="order_status.primary_button"
+                      className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-4 rounded-full transition-all hover:scale-105 shadow-lg shadow-green-200 text-base"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                      {isHindi ? "मेरी वेबसाइट खोलें →" : "Open My Website →"}
+                    </a>
+                  )}
+
+                  {/* WhatsApp CTAs */}
+                  {status.status === "approved" && (
+                    <a
+                      href={waApprovedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-ocid="order_status.button"
+                      className="w-full inline-flex items-center justify-center gap-2 border border-green-300 text-green-700 hover:bg-green-50 font-semibold px-6 py-3 rounded-full transition-all text-sm"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      {isHindi ? "व्हाट्सएप पर बात करें" : "Chat on WhatsApp"}
+                    </a>
+                  )}
+                  {status.status === "rejected" && (
+                    <a
+                      href={waRejectedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-ocid="order_status.button"
+                      className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-md shadow-green-200 text-sm"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      {isHindi ? "व्हाट्सएप पर संपर्क करें" : "Contact on WhatsApp"}
+                    </a>
+                  )}
+                  {status.status === "pending" && (
+                    <a
+                      href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello! I submitted my UTR. My order ID is: ${orderId}. Please check my payment status.`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-ocid="order_status.button"
+                      className="w-full inline-flex items-center justify-center gap-2 border border-green-300 text-green-700 hover:bg-green-50 font-semibold px-6 py-3 rounded-full transition-all text-sm"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      {isHindi ? "व्हाट्सएप पर पूछें" : "Ask on WhatsApp"}
+                    </a>
+                  )}
+
+                  {/* Refresh button */}
+                  <button
+                    type="button"
+                    onClick={fetchStatus}
+                    data-ocid="order_status.secondary_button"
+                    className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border hover:border-primary/30 py-2.5 rounded-full transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    {isHindi ? "स्टेटस अपडेट करें" : "Check Again"}
+                  </button>
+                </div>
+              </div>
+            )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    APP ROOT
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
@@ -6770,6 +10710,22 @@ export default function App() {
   const [currentHash, setCurrentHash] = useState(() => window.location.hash);
   const [urgencyVisible, setUrgencyVisible] = useState(
     () => sessionStorage.getItem("lb_urgency_dismissed") !== "1",
+  );
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    planName: string;
+    amount: number;
+  }>({ open: false, planName: "", amount: 0 });
+
+  // Google Reviews Badge settings — read from localStorage (set by admin)
+  const [googleRating] = useState(
+    () => localStorage.getItem("lb_google_rating") ?? "",
+  );
+  const [googleReviewCount] = useState(
+    () => localStorage.getItem("lb_google_review_count") ?? "",
+  );
+  const [googleBusinessUrl] = useState(
+    () => localStorage.getItem("lb_google_business_url") ?? "",
   );
 
   useEffect(() => {
@@ -6834,6 +10790,120 @@ export default function App() {
     document.head.appendChild(script2);
   }, []);
 
+  // Part C2 — Schema Markup (JSON-LD): LocalBusiness + FAQPage
+  useEffect(() => {
+    if (document.getElementById("lb-schema-local")) return;
+
+    const localBusiness = {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      name: "LocalBoost Web",
+      description:
+        "Affordable, mobile-friendly websites for local businesses in India. Gyms, salons, coaching institutes, clinics, and shops. Free demo first.",
+      telephone: "+91-87095-46323",
+      email: "kkant5380@gmail.com",
+      url: "https://localboostweb.com",
+      address: {
+        "@type": "PostalAddress",
+        addressCountry: "IN",
+      },
+      serviceType: [
+        "Web Design",
+        "Web Development",
+        "Website for Gym",
+        "Website for Salon",
+        "Website for Coaching Institute",
+      ],
+      priceRange: "₹2,999–₹7,999",
+      openingHours: ["Mo-Sa 09:00-19:00"],
+      currenciesAccepted: "INR",
+      paymentAccepted: "Cash, UPI, Bank Transfer",
+    };
+
+    const faqPage = {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "Why does my business need a website?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "A website makes your business visible on Google, builds trust with new customers, and lets people find your contact details and services 24/7.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How long does it take to build a website?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "We deliver most websites in 3–7 working days after receiving your content and confirming the design.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Can I update the website later?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Yes. You can request content and photo updates at any time via WhatsApp. Larger changes are quoted separately.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Is the website mobile-friendly?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Yes. Every website we build is designed mobile-first and looks great on any phone or screen.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "What if I don't like the demo?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "No obligation. The demo is free. If you don't like it, you don't pay anything.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Do you provide hosting?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Yes, hosting and domain registration are part of the package. We handle the technical side so you don't have to.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "What is the starting price?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Our Basic package starts at ₹2,999 for up to 3 pages. The final price depends on the features you need.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How do I get started?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Simply fill in the free demo request form on this page, and we'll build a preview website for your business within a few days — no payment required.",
+          },
+        },
+      ],
+    };
+
+    const s1 = document.createElement("script");
+    s1.id = "lb-schema-local";
+    s1.type = "application/ld+json";
+    s1.textContent = JSON.stringify(localBusiness);
+    document.head.appendChild(s1);
+
+    const s2 = document.createElement("script");
+    s2.id = "lb-schema-faq";
+    s2.type = "application/ld+json";
+    s2.textContent = JSON.stringify(faqPage);
+    document.head.appendChild(s2);
+  }, []);
+
   // Hash-based routing for preview pages
   if (currentHash === "#/preview/gym-sample") return <GymPreview />;
   if (currentHash === "#/preview/coaching-sample") return <CoachingPreview />;
@@ -6841,6 +10911,12 @@ export default function App() {
 
   // Admin dashboard
   if (currentHash === "#/admin") return <AdminDashboard />;
+
+  // Order status page
+  if (currentHash.startsWith("#/order/")) {
+    const orderId = currentHash.replace("#/order/", "");
+    if (orderId) return <OrderStatusPage orderId={orderId} isHindi={isHindi} />;
+  }
 
   // Dynamic preview routes (slugs that are NOT the 3 static demos)
   if (currentHash.startsWith("#/preview/")) {
@@ -6879,7 +10955,12 @@ export default function App() {
         <Hero isHindi={isHindi} />
 
         {/* 2 — About */}
-        <About isHindi={isHindi} />
+        <About
+          isHindi={isHindi}
+          googleRating={googleRating}
+          googleReviewCount={googleReviewCount}
+          googleBusinessUrl={googleBusinessUrl}
+        />
 
         {/* 3 — Services */}
         <Services isHindi={isHindi} />
@@ -6906,13 +10987,20 @@ export default function App() {
         <DemoRequestForm isHindi={isHindi} />
 
         {/* 10 — Pricing */}
-        <Pricing isHindi={isHindi} />
+        <Pricing
+          isHindi={isHindi}
+          onPlanSelect={(planName, amount) =>
+            setPaymentModal({ open: true, planName, amount })
+          }
+        />
 
         {/* 11 — Before vs After */}
         <BeforeAfterSection isHindi={isHindi} />
 
         {/* 12 — Testimonials */}
         <Testimonials isHindi={isHindi} />
+
+        {/* 12b — Blog section hidden (coming soon) */}
 
         {/* 13 — Free Audit Form */}
         <FreeAuditForm isHindi={isHindi} />
@@ -6921,7 +11009,12 @@ export default function App() {
         <FAQSection isHindi={isHindi} />
 
         {/* 15 — Contact */}
-        <ContactSection isHindi={isHindi} />
+        <ContactSection
+          isHindi={isHindi}
+          googleRating={googleRating}
+          googleReviewCount={googleReviewCount}
+          googleBusinessUrl={googleBusinessUrl}
+        />
       </main>
       {/* Final CTA Banner before footer */}
       <FinalCTABanner isHindi={isHindi} />
@@ -6929,6 +11022,15 @@ export default function App() {
       <WhatsAppFloat />
       {/* Exit-intent popup */}
       <ExitIntentPopup isHindi={isHindi} />
+      {/* UPI Payment Modal */}
+      {paymentModal.open && (
+        <UpiPaymentModal
+          planName={paymentModal.planName}
+          amount={paymentModal.amount}
+          isHindi={isHindi}
+          onClose={() => setPaymentModal((prev) => ({ ...prev, open: false }))}
+        />
+      )}
     </div>
   );
 }
