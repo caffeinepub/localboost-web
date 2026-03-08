@@ -72,6 +72,7 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
+import type React from "react";
 import { useEffect, useState } from "react";
 import type {
   DemoRequest,
@@ -10703,6 +10704,646 @@ function OrderStatusPage({
 }
 
 /* ═══════════════════════════════════════════════════════════
+   REBUILD TOOL PAGE
+═══════════════════════════════════════════════════════════ */
+
+const REBUILD_PARTS: { title: string; content: string }[] = [
+  {
+    title: "Part 1 — Header, Hero, Footer, Styles, WhatsApp Button",
+    content: `Build a freelancer/agency website called "LocalBoost Web" that sells affordable websites to local businesses (gyms, salons, coaching institutes, clinics, shops).
+
+CONTACT DETAILS (use everywhere):
+- Phone: +91 87095 46323 | tel:+918709546323
+- WhatsApp: https://wa.me/918709546323
+- Email: kkant5380@gmail.com
+- Working hours: Mon–Sat 9AM–7PM, Sunday WhatsApp only
+
+DESIGN SYSTEM (apply globally):
+- Fonts: "Bricolage Grotesque" (all headings h1–h6, font-bold) + "Plus Jakarta Sans" (body)
+- Color palette (OKLCH):
+  - Primary (deep indigo): oklch(0.45 0.23 264)
+  - Teal accent: oklch(0.55 0.18 185)
+  - Background: oklch(0.99 0 0) — near white
+  - Foreground: oklch(0.15 0.03 265) — near black
+  - Muted foreground: oklch(0.50 0.04 264)
+  - Border: oklch(0.90 0.015 264)
+  - Accent bg: oklch(0.93 0.025 264)
+  - Border radius: 0.75rem
+- CSS utilities: .text-gradient-indigo, .hero-gradient, .card-hover, .animate-pulse-ring
+
+STICKY NAVIGATION:
+- z-50, bg-white/95 backdrop-blur-md, border-b, shadow-sm, height 64px
+- Left: logo image (/assets/generated/logo-icon-only.dim_200x200.png) 36x36px + "LocalBoost Web" bold text
+- Desktop nav links: About, Services, Demos, AI Helper, Compare, Pricing, FAQ, Contact
+- Language toggle button: HI/EN
+- "Get Free Demo" button top-right: bg-primary, rounded-full
+- Mobile: hamburger icon → slide-down menu
+
+HERO SECTION (id="hero"):
+- Badge: Rocket icon + "Free Demo — No Payment Required"
+- H1: "Websites That Bring Local Customers" — gradient on "Bring Local"
+- Subheadline: services for gyms, salons, coaching, clinics, shops
+- 2 CTA buttons: "Get My Free Demo" + "View Pricing"
+- Microcopy: "No payment. No obligation."
+- 4 trust badges: Free Demo First, 3–7 Day Delivery, Mobile Ready, Starting ₹2,999
+- Video card below trust badges linking to YouTube modal
+
+FOOTER:
+- bg-foreground (dark) text-white, 3 columns: Brand | Quick Links | Get In Touch
+- Phone: +91 87095 46323, Email: kkant5380@gmail.com
+- "LocalBoost Web © {year} — All rights reserved."
+- NO "Built with caffeine.ai" credit
+
+FLOATING WHATSAPP BUTTON:
+- Fixed bottom-right, z-50, green circle with pulse ring
+- Links to: https://wa.me/918709546323
+
+URGENCY BANNER: "Only 3 demo slots left this week" — dismissible, sessionStorage
+
+EXIT-INTENT POPUP: triggers on desktop mouse leave top + mobile scroll-up
+
+GLOBAL EN/HI TOGGLE: useState isHindi at App root, passed to all sections
+
+Deploy after Part 1. Name the project "LocalBoost Web".`,
+  },
+  {
+    title: "Part 2 — About, Services, Why Choose Us",
+    content: `(Continuing LocalBoost Web — add these 3 sections after the Hero)
+
+ABOUT SECTION (id="about"):
+- 2-column: left = H2, bio, 3 stats (50+ Websites, 3–7 Day, 100% Satisfaction), mission card
+- Right = large circle with logo, floating badges
+- 3 stat cards: "50+" Websites Built | "3–7" Day Delivery | "100%" Satisfaction
+- Mission: "Helping every local business get found online."
+- Google Reviews Badge shown if googleRating is set in admin
+
+SERVICES SECTION (id="services"):
+- 9 service cards: Business Website, Gym, Coaching, Salon, Clinic, Shop, Google Maps, WhatsApp, Mobile-Friendly
+- Each: colored icon square + title + short description + EN/HI text
+- CTA: "Get My Free Demo Website" at bottom
+
+WHY CHOOSE US SECTION (id="why-us"):
+- 5 benefit cards: Fast Delivery, Affordable Pricing, Mobile-Friendly, Built for Local Businesses, WhatsApp Support
+- Trust strip at bottom with "Get Free Demo" CTA`,
+  },
+  {
+    title: "Part 3 — Comparison Table, Portfolio, Preview Pages",
+    content: `(Continuing LocalBoost Web — add these sections)
+
+COMPARISON TABLE (id="comparison"):
+- 4 columns: Feature | LocalBoost Web | Other Freelancer | DIY Wix/Squarespace
+- 8 rows: Starting Price, Delivery Time, Mobile-Friendly, Local Business Focus, Free Demo First, WhatsApp Support, Revisions, Ongoing Support
+- LocalBoost column highlighted in indigo
+- Mobile: card layout
+
+PORTFOLIO / DEMOS (id="demos"):
+- Fetches getPublicPortfolioItems() from backend; falls back to 3 hardcoded demos
+- 3 demo cards: Gym Website Demo, Coaching Institute Demo, Salon Website Demo
+- Each card: gradient banner, pages checklist, "View Live Site" or "Request This Style" button
+
+STATIC PREVIEW PAGES (hash routing):
+- #/preview/gym-sample — PowerFit Gym (classes, membership plans, trainers, contact)
+- #/preview/coaching-sample — BrightPath Coaching (courses, faculty, why choose us)
+- #/preview/salon-sample — GlowUp Salon (services, prices, stylists, contact)
+- Each preview has sticky banner: Back, Copy Link, Print/Export, Request This Style
+
+DYNAMIC ORDER STATUS PAGE (#/order/{orderId}):
+- Pending: amber badge + "Verifying payment, up to 24 hours"
+- Approved: green badge + "Your Website is Ready!" + "Open My Website" button
+- Rejected: red badge + WhatsApp CTA`,
+  },
+  {
+    title: "Part 4 — Free Demo Banner, Demo Request Form, AI Helper",
+    content: `(Continuing LocalBoost Web — add these 3 sections)
+
+FREE DEMO BANNER:
+- Full-width indigo gradient, "We Build Your Preview Website First — No Obligation"
+- 3 trust pills + CTA "Request Your Free Demo Website"
+
+FREE DEMO REQUEST FORM (id="demo-form"):
+- Fields: Business Name, Business Type (Gym/Salon/Coaching/Clinic/Shop/Other), Phone (required), Preferred Language (EN/HI), Message (optional)
+- localStorage draft save on every change ("lb_demo_draft")
+- Submit calls backend submitDemoRequest()
+- Rate limit error: "3 requests in 30 days" message
+- Success: WhatsApp follow-up button with business-type-specific template
+- Hindi/English versions of all labels
+
+AI WEBSITE HELPER (id="ai-helper"):
+- 5 business type selector buttons: Gym, Salon, Coaching, Clinic, Shop
+- Per-type recommended pages with INR cost and delivery time
+- GYM: Homepage ₹800, Services ₹600, Membership Plans ₹500, Gallery ₹800, Contact ₹400 → Package: Business ₹4,999
+- SALON: Homepage ₹800, Services ₹600, Gallery ₹800, Booking ₹1,000, Contact ₹400 → Package: Business ₹4,999
+- COACHING: Homepage ₹800, Courses ₹700, Faculty ₹500, Results ₹600, Admission ₹800, Contact ₹400 → Package: Advanced ₹7,999
+- CLINIC: Homepage ₹800, Services ₹600, Doctors ₹500, Appointment ₹800, Contact ₹400 → Package: Business ₹4,999
+- SHOP: Homepage ₹800, Products ₹700, About ₹400, Contact ₹400 → Package: Basic ₹2,999
+- Summary card with total, package name, savings callout
+- Hindi toggle`,
+  },
+  {
+    title: "Part 5 — Cost Calculator, Pricing, Audit Form",
+    content: `(Continuing LocalBoost Web — add these sections)
+
+COST CALCULATOR (id="calculator"):
+- Two-column: controls left, live total right
+- Business Type dropdown, pages slider 1–10 (base ₹1,500 + ₹300/extra page)
+- Add-ons: Contact Form +₹500, Google Maps +₹500, WhatsApp Button +₹300, Photo Gallery +₹800, Blog Section +₹1,200, Online Booking +₹1,500
+- Live total in large ₹X,XXX typography
+- "Request Exact Quote" CTA (scrolls to #demo-form)
+
+PRICING SECTION (id="pricing"):
+- 3 cards: Basic ₹2,999 (3 pages), Business ₹4,999 (6 pages, "Most Popular"), Advanced ₹7,999 (10 pages)
+- "Monthly Maintenance ₹499/month" on all cards
+- "Get Started" → opens UPI payment modal with correct amount
+- Custom quote: "Chat on WhatsApp" link below cards
+
+FREE AUDIT FORM (id="audit"):
+- URL or Google Maps link (required), Name (optional), Phone (optional)
+- Submit calls backend submitAuditRequest()
+- Success: shows 8-point audit checklist (Mobile-Friendly, Google Maps, Page Speed, Contact Form, WhatsApp, SEO, Reviews, Gallery)`,
+  },
+  {
+    title: "Part 6 — Testimonials, Before/After, FAQ, Contact, Final CTA",
+    content: `(Continuing LocalBoost Web — add these sections)
+
+TESTIMONIALS (id="testimonials"):
+- Fetches getApprovedTestimonials() from backend
+- Empty state: "Client reviews coming soon" + 3 ghost placeholders
+- "Write a Review" inline form: Name, Business Type, Stars (1–5), Review Text
+- Submit calls submitTestimonial()
+
+BEFORE vs AFTER (id="before-after"):
+- Two-column: WITHOUT (red, 5 bullets) vs WITH (green, 5 bullets)
+- Without: Hard to find, lose customers, less professional, no hours, no presence
+- With: Found on Google, more enquiries, builds trust, show timings, easy contact
+- CTA: "Get My Free Demo Website"
+
+FAQ SECTION (id="faq"):
+- 8 accordion questions with EN/HI toggle
+- Questions: Why need website, delivery time, do I pay first, mobile-friendly, what if I don't like demo, hosting, pricing, how to get started
+
+CONTACT SECTION (id="contact"):
+- Left: phone, email, WhatsApp button, working hours, Google Reviews badge
+- Right: contact form (Name, Email, Message) → submitContactMessage()
+- Success/error/loading states
+
+FINAL CTA BANNER (above footer):
+- Indigo gradient, "Ready to Grow Your Business Online?"
+- "Get My Free Demo Website" + "Chat on WhatsApp" buttons`,
+  },
+  {
+    title: "Part 7 — UPI Payment Modal + Order Status Page",
+    content: `(Continuing LocalBoost Web — add UPI payment system)
+
+UPI PAYMENT MODAL (opened by Pricing "Get Started" buttons):
+- Fetches getUpiSettings() from backend on open
+- If paymentsEnabled = false: show "Coming Soon" + WhatsApp fallback
+- Step 1: Amount card (₹X,XXX), UPI ID with Copy button, 5 app selectors (GPay, PhonePe, Paytm, BHIM, Other), instruction box
+- Step 2: Name (required), Phone (required), UTR (required, exactly 12 digits, live counter "X/12")
+  - Only digits allowed, error if 1–11 digits, green check at 12
+  - Submit disabled unless all fields valid
+  - Calls submitPaymentOrder(name, phone, planName, amount, utr)
+- Step 3: Success with order summary, "Confirm on WhatsApp" (green), "Check Order Status" link
+- ESC closes, Hindi/English support, rounded-3xl max-w-md modal
+
+ORDER STATUS PAGE (#/order/{orderId}):
+- Fetches getPaymentOrderStatus(orderId)
+- Pending: amber badge + "Verifying payment, up to 24 hours"
+- Approved: green badge + "Your Website is Ready!" + "Open My Website" button
+- Rejected: red badge + WhatsApp CTA with UTR reference
+- Refresh button, Back to home, Hindi/English support`,
+  },
+  {
+    title: "Part 8 — Admin Dashboard",
+    content: `(Continuing LocalBoost Web — add full Admin Dashboard at hash route #/admin)
+
+ADMIN PASSWORD GATE:
+- SHA-256 hash comparison: hash of "LB@2026#Admin!" = "390648189081139af5305a7267c0538bdbba90dbea8e8761de006009a58e8ea7"
+- sessionStorage "lb_admin_auth" = "1" on success
+- 3 failed attempts → 30-second lockout with countdown
+
+ADMIN DASHBOARD TABS: Demo Requests | Payments | Audit Requests | Testimonials | Portfolio | Contact Messages | Site Settings
+
+Demo Requests tab:
+- getAllDemoRequests(), table with status dropdowns, +7 Days expiry, copy preview link
+- Follow-up alert: amber banner for requests with no response in 24+ hours
+- Per-row WhatsApp quick-action button
+
+Payments tab:
+- getAllPaymentOrders(), table with Approve/Reject buttons
+- Approve: paste app link → updatePaymentOrderStatus() → "Copy WhatsApp Msg" button
+
+Audit Requests tab: getAllAuditRequests(), simple table
+
+Testimonials tab: getAllTestimonials(), Approve/Reject + "Add Review" modal
+
+Portfolio tab: getAllPortfolioItems(), Add/Edit/Delete with modal (Title, Business Type, Description, Live URL, Demo Admin URL, Thumbnail, Pages, Status)
+
+Contact Messages tab: getAllContactMessages(), expandable rows
+
+Site Settings tab:
+- Pricing (Basic/Business/Advanced price inputs)
+- Google Reviews badge (rating, count, URL)
+- WhatsApp Templates per business type (5 textareas with Copy/Reset)
+- Video URL for hero (YouTube link)
+- SEO: Title, Meta Description, Robots
+- Analytics: Google Analytics G- ID
+- UPI Settings: UPI ID, Display Name, Enable/Disable toggle`,
+  },
+  {
+    title: "Part 9 — Backend (Motoko)",
+    content: `Generate the complete Motoko backend for LocalBoost Web.
+
+DATA TYPES:
+1. DemoRequest: { id, businessName, businessType, phoneNumber, language, message?, status, previewSlug, createdAt, expiresAt }
+2. AuditRequest: { id, websiteOrMapsUrl, name?, phoneNumber?, createdAt }
+3. ContactMessage: { id, name, email, message, createdAt }
+4. SiteSettings: { basicPrice, businessPrice, advancedPrice, analyticsId, workingHours, heroHeadline, heroSubheadline, googleRating, googleReviewCount, googleBusinessUrl }
+5. Testimonial: { id, name, businessType, rating, text, photoUrl?, status, createdAt }
+6. UpiSettings: { upiId, upiName, paymentsEnabled }
+7. PaymentOrder: { id, clientName, clientPhone, planName, amount, utrNumber, status, appLink, createdAt }
+8. PortfolioItem: { id, title, businessType, description, liveUrl, thumbnailUrl, pages, status, createdAt }
+
+DEFAULT VALUES:
+- SiteSettings: basicPrice=2999, businessPrice=4999, advancedPrice=7999, analyticsId="", workingHours="Mon–Sat 9AM–7PM | Sunday: WhatsApp only"
+- UpiSettings: upiId="", upiName="", paymentsEnabled=false
+
+PUBLIC FUNCTIONS (no auth):
+- submitDemoRequest(businessName, businessType, phoneNumber, language, message?) → Text (slug). RATE LIMIT: max 3 per phone per 30 days. expiresAt = createdAt + 7 days. Status = "New".
+- submitAuditRequest(url, name?, phone?) → ()
+- submitContactMessage(name, email, message) → ()
+- getPreviewBySlug(slug) → ?DemoRequest (only non-expired)
+- getApprovedTestimonials() → [Testimonial]
+- getUpiSettings() → UpiSettings
+- submitPaymentOrder(name, phone, planName, amount, utr) → Text (orderId). utr must be exactly 12 chars.
+- getPaymentOrderStatus(orderId) → ?PaymentOrderStatus (public fields only)
+- getPublicPortfolioItems() → [PortfolioItem] (status != "hidden", sorted by createdAt desc)
+- submitTestimonial(name, businessType, rating, text, photoUrl?) → ()
+
+ADMIN-ONLY FUNCTIONS (require #admin permission):
+- getAllDemoRequests, getAllAuditRequests, getAllContactMessages
+- updateDemoRequestStatus, extendPreviewExpiry
+- getSiteSettings, updateSiteSettings
+- getAllTestimonials, updateTestimonialStatus
+- getAllPaymentOrders, updatePaymentOrderStatus
+- updateUpiSettings
+- addPortfolioItem, updatePortfolioItem, deletePortfolioItem, getAllPortfolioItems
+
+Use authorization component for admin checks.`,
+  },
+  {
+    title: "Part 10 — Logo Images + Final Polish",
+    content: `(Continuing LocalBoost Web — final assets and polish)
+
+GENERATE TWO LOGO IMAGES:
+
+Image 1 — Icon only (for navbar):
+Filename: logo-icon-only.dim_200x200.png
+Description: Minimalist modern logo icon — three ascending rounded bar shapes in a gradient from deep indigo to teal, arranged like a signal strength chart. Clean white background, flat vector, no text. 200x200.
+
+Image 2 — Full logo with wordmark (for footer and about):
+Filename: logo-localboost.dim_600x300.png
+Description: Professional logo — three ascending rounded bar shapes (signal/growth icon) in deep indigo on the left, followed by bold wordmark "LocalBoost Web" in strong geometric sans-serif. Clean white background, flat vector. Wide format 600x300.
+
+SITEMAP:
+Create /public/sitemap.xml with home, #about, #services, #demos, #ai-helper, #comparison, #pricing, #faq, #contact, and preview routes.
+
+JSON-LD SCHEMA (inject in <head>):
+1. LocalBusiness: name, phone, email, services, priceRange, openingHours
+2. FAQPage: 8 Q&A pairs
+
+ENSURE:
+- No "Built with caffeine.ai" anywhere
+- Footer: "LocalBoost Web © {year} — All rights reserved."
+- Phone: +91 87095 46323 | Email: kkant5380@gmail.com | WhatsApp: wa.me/918709546323
+- All prices in INR (₹)
+- Admin password hash for "LB@2026#Admin!" = "390648189081139af5305a7267c0538bdbba90dbea8e8761de006009a58e8ea7"
+- Admin URL: [site-url]/#/admin`,
+  },
+];
+
+const REBUILD_TXT = REBUILD_PARTS.map(
+  (p, i) =>
+    `${"═".repeat(60)}\nPART ${i + 1}: ${p.title}\n${"═".repeat(60)}\n\n${p.content}`,
+).join("\n\n\n");
+
+function RebuildToolPage() {
+  const [uploadedParts, setUploadedParts] = useState<
+    { title: string; content: string }[] | null
+  >(null);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [parseError, setParseError] = useState("");
+
+  function downloadTxt() {
+    const blob = new Blob([REBUILD_TXT], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "localboost-rebuild-prompts.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function parseTxt(text: string): { title: string; content: string }[] {
+    const lines = text.split("\n");
+    const parts: { title: string; content: string }[] = [];
+    let currentTitle = "";
+    let currentLines: string[] = [];
+
+    for (const line of lines) {
+      // Detect part header lines like "PART 1: Part 1 — ..."
+      if (/^PART\s+\d+:/i.test(line.trim())) {
+        if (currentTitle) {
+          parts.push({
+            title: currentTitle,
+            content: currentLines.join("\n").trim(),
+          });
+        }
+        currentTitle = line.trim().replace(/^PART\s+\d+:\s*/i, "");
+        currentLines = [];
+      } else if (/^═+$/.test(line.trim())) {
+        // Skip separator lines
+      } else {
+        currentLines.push(line);
+      }
+    }
+    if (currentTitle) {
+      parts.push({
+        title: currentTitle,
+        content: currentLines.join("\n").trim(),
+      });
+    }
+    return parts;
+  }
+
+  function handleFile(file: File) {
+    setParseError("");
+    if (!file.name.endsWith(".txt")) {
+      setParseError("Please upload a .txt file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const parts = parseTxt(text);
+      if (parts.length === 0) {
+        setParseError(
+          "Could not find any parts in the uploaded file. Make sure it is the LocalBoost rebuild prompts file.",
+        );
+        return;
+      }
+      setUploadedParts(parts);
+      setExpandedIdx(0);
+    };
+    reader.readAsText(file);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  }
+
+  async function copyPart(content: string, idx: number) {
+    await navigator.clipboard.writeText(content);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  }
+
+  const parts = uploadedParts ?? REBUILD_PARTS;
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="border-b bg-white sticky top-0 z-50 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              data-ocid="rebuild_tool.back_button"
+              onClick={() => {
+                window.location.hash = "";
+              }}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Site
+            </button>
+            <span className="text-border">|</span>
+            <span className="font-semibold text-foreground">
+              Rebuild Prompts Tool
+            </span>
+          </div>
+          <button
+            type="button"
+            data-ocid="rebuild_tool.download_button"
+            onClick={downloadTxt}
+            className="inline-flex items-center gap-2 bg-primary text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-primary/90 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download TXT
+          </button>
+        </div>
+      </div>
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-1.5 rounded-full mb-4">
+            <Rocket className="w-4 h-4" />
+            LocalBoost Web — Rebuild Tool
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
+            Rebuild Your Website From Scratch
+          </h1>
+          <p className="text-muted-foreground text-base max-w-xl mx-auto">
+            Download the complete rebuild prompts file, then upload it here to
+            get each part split out — ready to copy and paste into Caffeine AI
+            one by one.
+          </p>
+        </div>
+
+        {/* How to use steps */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+          {[
+            {
+              step: "1",
+              title: "Download TXT",
+              desc: "Click the Download button to save all 10 rebuild prompts as a .txt file.",
+            },
+            {
+              step: "2",
+              title: "Upload TXT",
+              desc: "Drag & drop or browse to upload the TXT file below to split it into parts.",
+            },
+            {
+              step: "3",
+              title: "Copy & Paste",
+              desc: "Copy each part one at a time and paste into a new Caffeine AI project in order.",
+            },
+          ].map(({ step, title, desc }) => (
+            <div
+              key={step}
+              className="bg-accent/40 rounded-2xl border border-border p-5"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary text-white text-sm font-bold flex items-center justify-center mb-3">
+                {step}
+              </div>
+              <div className="font-semibold text-foreground mb-1">{title}</div>
+              <div className="text-sm text-muted-foreground">{desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Upload zone */}
+        <div
+          data-ocid="rebuild_tool.dropzone"
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          className={`border-2 border-dashed rounded-2xl p-8 text-center mb-8 transition-colors ${dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 bg-accent/20"}`}
+        >
+          <Cloud className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+          <p className="font-semibold text-foreground mb-1">
+            Drop your TXT file here
+          </p>
+          <p className="text-sm text-muted-foreground mb-4">
+            or click to browse
+          </p>
+          <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-primary/90 transition-colors">
+            <input
+              type="file"
+              accept=".txt"
+              className="sr-only"
+              data-ocid="rebuild_tool.upload_button"
+              onChange={handleInputChange}
+            />
+            Browse File
+          </label>
+          {parseError && (
+            <div
+              data-ocid="rebuild_tool.error_state"
+              className="mt-4 flex items-center justify-center gap-2 text-sm text-red-600 font-medium"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {parseError}
+            </div>
+          )}
+          {uploadedParts && (
+            <div
+              data-ocid="rebuild_tool.success_state"
+              className="mt-4 flex items-center justify-center gap-2 text-sm text-green-700 font-medium"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {uploadedParts.length} parts loaded from your file
+            </div>
+          )}
+        </div>
+
+        {/* Parts list */}
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-foreground">
+            {uploadedParts
+              ? `Loaded Parts (${uploadedParts.length})`
+              : `All ${REBUILD_PARTS.length} Rebuild Parts`}
+          </h2>
+          {uploadedParts && (
+            <button
+              type="button"
+              onClick={() => {
+                setUploadedParts(null);
+                setExpandedIdx(null);
+                setParseError("");
+              }}
+              className="text-sm text-muted-foreground hover:text-foreground border border-border rounded-full px-3 py-1 hover:border-primary/30 transition-colors"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {parts.map((part, idx) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: parts list order is stable
+              key={idx}
+              data-ocid={`rebuild_tool.item.${idx + 1}`}
+              className="border border-border rounded-2xl bg-white overflow-hidden"
+            >
+              <button
+                type="button"
+                data-ocid={`rebuild_tool.toggle.${idx + 1}`}
+                onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
+                    {idx + 1}
+                  </span>
+                  <span className="font-semibold text-foreground text-sm sm:text-base">
+                    {part.title}
+                  </span>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 text-muted-foreground transition-transform flex-shrink-0 ${expandedIdx === idx ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {expandedIdx === idx && (
+                <div className="border-t border-border px-5 py-4">
+                  <div className="flex justify-end mb-3">
+                    <button
+                      type="button"
+                      data-ocid={`rebuild_tool.copy_button.${idx + 1}`}
+                      onClick={() => copyPart(part.content, idx)}
+                      className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition-colors ${copiedIdx === idx ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
+                    >
+                      {copiedIdx === idx ? (
+                        <CheckCircle className="w-4 h-4" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                      {copiedIdx === idx ? "Copied!" : "Copy Part"}
+                    </button>
+                  </div>
+                  <pre className="text-xs text-muted-foreground bg-accent/40 rounded-xl p-4 whitespace-pre-wrap font-mono overflow-x-auto max-h-80 overflow-y-auto leading-relaxed">
+                    {part.content}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom tip */}
+        <div className="mt-10 bg-primary/5 border border-primary/20 rounded-2xl p-6 text-center">
+          <Sparkles className="w-6 h-6 text-primary mx-auto mb-2" />
+          <p className="font-semibold text-foreground mb-1">
+            Tip: Start with Part 9 (Backend)
+          </p>
+          <p className="text-sm text-muted-foreground">
+            In a new Caffeine AI project, paste Part 9 first to set up the
+            backend. Then paste Parts 1–8 in order, deploying and reviewing each
+            one before moving to the next. Paste Part 10 last for logos and
+            final polish.
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    APP ROOT
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
@@ -10903,6 +11544,9 @@ export default function App() {
     s2.textContent = JSON.stringify(faqPage);
     document.head.appendChild(s2);
   }, []);
+
+  // Rebuild tool page
+  if (currentHash === "#/rebuild-tool") return <RebuildToolPage />;
 
   // Hash-based routing for preview pages
   if (currentHash === "#/preview/gym-sample") return <GymPreview />;
